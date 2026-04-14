@@ -6,7 +6,7 @@ import {
 import { collection, onSnapshot, query, updateDoc, doc, writeBatch, getDocs } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
-import alertSoundFile from '../../assets/alert.mp3';
+const alertSoundFile = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
 import { db } from '../firebaseConfig';
 
 const screenWidth = Dimensions.get('window').width;
@@ -145,20 +145,19 @@ export default function DashboardScreen() {
   const soundRef = useRef(null);
   const isFirstLoad = useRef(true);
 
-  async function initSoundSystem() {
+ async function initSoundSystem() {
     try {
       if (Platform.OS === 'web') {
-        const audio = new window.Audio(alertSoundFile);
+        const audio = new window.Audio(alertSoundFile); // Uses the URL now
         await audio.play().then(() => audio.pause()).catch(e => {});
         soundRef.current = audio;
       } else {
-        const { sound } = await Audio.Sound.createAsync(alertSoundFile);
+        const { sound } = await Audio.Sound.createAsync({ uri: alertSoundFile });
         soundRef.current = sound;
       }
       isShiftStarted = true; setAppReady(true);
     } catch (error) { isShiftStarted = true; setAppReady(true); }
   }
-
   async function playAlert() {
     if (Platform.OS === 'web' && soundRef.current) {
       soundRef.current.currentTime = 0; soundRef.current.play().catch(e => {});
