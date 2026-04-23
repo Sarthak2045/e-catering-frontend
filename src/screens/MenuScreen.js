@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet,
-  Alert, Modal
+  Alert, Modal, Platform
 } from 'react-native';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -9,17 +9,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 
 export default function MenuScreen() {
-  const [activeTab, setActiveTab] = useState('categories');
-  const [categories, setCategories] = useState([]);
-  const [menuItems, setMenuItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [categories, setCategories]     = useState([]);
+  const [menuItems, setMenuItems]       = useState([]);
+  const [search, setSearch]             = useState('');
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemPrice, setNewItemPrice] = useState('');
+  // Category modal
+  const [catModalVisible, setCatModalVisible]   = useState(false);
+  const [newCategoryName, setNewCategoryName]   = useState('');
+
+  // Menu Item modal
+  const [itemModalVisible, setItemModalVisible] = useState(false);
+  const [newItemName, setNewItemName]           = useState('');
+  const [newItemPrice, setNewItemPrice]         = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
-  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isVeg, setIsVeg]                       = useState(true);
 
+  // ── Firebase ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const catUnsub = onSnapshot(query(collection(db, 'categories'), orderBy('name')), (snap) => {
       const cats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -29,19 +34,20 @@ export default function MenuScreen() {
 
     const menuUnsub = onSnapshot(query(collection(db, 'menuItems'), orderBy('name')), (snap) => {
       setMenuItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
     });
 
     return () => { catUnsub(); menuUnsub(); };
   }, []);
 
+  // ── Add Category ──────────────────────────────────────────────────────────
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return;
     await addDoc(collection(db, 'categories'), { name: newCategoryName.trim() });
     setNewCategoryName('');
-    Alert.alert('Success', 'Category Added!');
+    setCatModalVisible(false);
   };
 
+  // ── Add Menu Item ─────────────────────────────────────────────────────────
   const handleAddItem = async () => {
     if (!newItemName || !newItemPrice || !selectedCategory) {
       Alert.alert('Error', 'Please fill all fields and select a category');
@@ -51,396 +57,334 @@ export default function MenuScreen() {
       name: newItemName,
       price: parseFloat(newItemPrice),
       categoryId: selectedCategory,
-      isVeg: true
+      isVeg: isVeg,
     });
-    setModalVisible(false);
+    setItemModalVisible(false);
     setNewItemName('');
     setNewItemPrice('');
+    setIsVeg(true);
   };
 
+  // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = async (col, id) => {
-    if (confirm('Delete this item?')) {
+    const doDelete = async () => {
       await deleteDoc(doc(db, col, id));
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete this item?')) doDelete();
+    } else {
+      Alert.alert('Delete', 'Are you sure?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', onPress: doDelete, style: 'destructive' },
+      ]);
     }
   };
 
+  const filteredItems = menuItems.filter(item =>
+    item.name?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const openItemModal = () => {
+    if (categories.length === 0) {
+      Alert.alert('Error', 'Please add a Category first!');
+      return;
+    }
+    setItemModalVisible(true);
+  };
+
   return (
-    <View style={styles.container}>
-      {/* HEADER */}
+    <View style={styles.screen}>
+
+      {/* ── Page Header ── */}
       <View style={styles.pageHeader}>
-        <Text style={styles.header}>Menu Management</Text>
-        <Text style={styles.headerSub}>
-          {categories.length} categories · {menuItems.length} items
-        </Text>
+        <Text style={styles.pageTitle}>Menu Management</Text>
+        <Text style={styles.pageSub}>{categories.length} categories · {menuItems.length} items</Text>
       </View>
 
-      {/* TABS */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          onPress={() => setActiveTab('categories')}
-          style={[styles.tab, activeTab === 'categories' && styles.activeTab]}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name="list-outline"
-            size={14}
-            color={activeTab === 'categories' ? '#0f172a' : '#94a3b8'}
+      {/* ── Toolbar: Search + Buttons ── */}
+      <View style={styles.actionBar}>
+        <View style={styles.searchBox}>
+          <Ionicons name="search-outline" size={10} color="#94a3b8" style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search items..."
+            placeholderTextColor="#94a3b8"
+            value={search}
+            onChangeText={setSearch}
           />
-          <Text style={[styles.tabText, activeTab === 'categories' && styles.activeTabText]}>
-            Categories
-          </Text>
+        </View>
+        <TouchableOpacity style={styles.actionBtn} onPress={openItemModal}>
+          <Ionicons name="add" size={15} color="white" />
+          <Text style={styles.actionBtnText}>MENU ITEM</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setActiveTab('items')}
-          style={[styles.tab, activeTab === 'items' && styles.activeTab]}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name="restaurant-outline"
-            size={14}
-            color={activeTab === 'items' ? '#0f172a' : '#94a3b8'}
-          />
-          <Text style={[styles.tabText, activeTab === 'items' && styles.activeTabText]}>
-            Menu Items
-          </Text>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => setCatModalVisible(true)}>
+          <Ionicons name="add" size={15} color="white" />
+          <Text style={styles.actionBtnText}>CATEGORY</Text>
         </TouchableOpacity>
       </View>
 
-      {/* CATEGORIES VIEW */}
-      {activeTab === 'categories' && (
-        <View style={styles.content}>
-          <View style={styles.addRow}>
-            <TextInput
-              style={styles.input}
-              placeholder="New category name (e.g. Starters)"
-              placeholderTextColor="#cbd5e1"
-              value={newCategoryName}
-              onChangeText={setNewCategoryName}
-            />
-            <TouchableOpacity style={styles.addBtn} onPress={handleAddCategory}>
-              <Ionicons name="add" size={20} color="white" />
-            </TouchableOpacity>
-          </View>
+      {/* ── Table ── */}
+      <View style={styles.tableWrapper}>
 
-          {categories.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="folder-open-outline" size={32} color="#cbd5e1" />
-              <Text style={styles.emptyText}>No categories yet</Text>
+        {/* Table Header */}
+        <View style={styles.tableHeader}>
+          <Text style={[styles.th, { flex: 0.6 }]}>Sr. No.</Text>
+          <Text style={[styles.th, { flex: 2 }]}>Item Name</Text>
+          <Text style={[styles.th, { flex: 1.4 }]}>Menu</Text>
+          <Text style={[styles.th, { flex: 1 }]}>Price</Text>
+          <Text style={[styles.th, { flex: 1.2 }]}>Veg / NonVeg</Text>
+          <Text style={[styles.th, { flex: 1.2 }]}>Actions</Text>
+        </View>
+
+        {/* Rows */}
+        <FlatList
+          data={filteredItems}
+          keyExtractor={item => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 40 }}
+          ListEmptyComponent={
+            <View style={styles.emptyRow}>
+              <Ionicons name="restaurant-outline" size={28} color="#cbd5e1" />
+              <Text style={styles.emptyText}>No menu items yet. Click + MENU ITEM to add one.</Text>
             </View>
-          ) : (
-            <FlatList
-              data={categories}
-              keyExtractor={item => item.id}
-              renderItem={({ item, index }) => (
-                <View style={styles.listItem}>
-                  <View style={styles.listItemLeft}>
-                    <Text style={styles.indexNumber}>{String(index + 1).padStart(2, '0')}</Text>
-                    <Text style={styles.listText}>{item.name}</Text>
-                  </View>
+          }
+          renderItem={({ item, index }) => {
+            const catName = categories.find(c => c.id === item.categoryId)?.name || 'Unknown';
+            const veg = item.isVeg !== false; // default true
+            return (
+              <View style={[styles.tableRow, index % 2 !== 0 && styles.tableRowAlt]}>
+
+                {/* Sr No */}
+                <Text style={[styles.td, styles.tdBold, { flex: 0.6 }]}>{index + 1}</Text>
+
+                {/* Item Name */}
+                <Text style={[styles.td, styles.tdBold, { flex: 2 }]}>{item.name}</Text>
+
+                {/* Menu / Category */}
+                <Text style={[styles.td,  styles.tdBold, { flex: 1.4 }]}>{catName}</Text>
+
+                {/* Price */}
+                <Text style={[styles.td, styles.tdBold, { flex: 1 }]}>₹ {item.price}</Text>
+
+                {/* Veg / NonVeg */}
+                <View style={[styles.tdCell, { flex: 1.2, justifyContent: 'center' }]}>
+                  <View style={[styles.vegDot, { backgroundColor: veg ? '#16a34a' : '#dc2626' }]} />
+                </View>
+
+                {/* Actions */}
+                <View style={[styles.tdCell, { flex: 1.2, gap: 8, justifyContent: 'center' }]}>
+                  <TouchableOpacity style={styles.editBtn}>
+                    <Ionicons name="pencil" size={13} color="white" />
+                  </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => handleDelete('categories', item.id)}
                     style={styles.deleteBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    onPress={() => handleDelete('menuItems', item.id)}
                   >
-                    <Ionicons name="trash-outline" size={15} color="#94a3b8" />
+                    <Ionicons name="trash" size={13} color="white" />
                   </TouchableOpacity>
                 </View>
-              )}
-            />
-          )}
-        </View>
-      )}
 
-      {/* ITEMS VIEW */}
-      {activeTab === 'items' && (
-        <View style={styles.content}>
-          <TouchableOpacity
-            style={styles.bigAddBtn}
-            onPress={() => {
-              if (categories.length === 0) {
-                Alert.alert('Error', 'Please add a Category first!');
-                return;
-              }
-              setModalVisible(true);
-            }}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="add-circle-outline" size={18} color="white" />
-            <Text style={styles.bigAddBtnText}>Add New Dish</Text>
-          </TouchableOpacity>
+              </View>
+            );
+          }}
+        />
+      </View>
 
-          {menuItems.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="restaurant-outline" size={32} color="#cbd5e1" />
-              <Text style={styles.emptyText}>No menu items yet</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={menuItems}
-              keyExtractor={item => item.id}
-              renderItem={({ item }) => {
-                const catName = categories.find(c => c.id === item.categoryId)?.name || 'Unknown';
-                return (
-                  <View style={styles.listItem}>
-                    <View style={styles.listItemLeft}>
-                      <View style={[styles.vegIndicator, { backgroundColor: item.isVeg ? '#16a34a' : '#dc2626' }]} />
-                      <View>
-                        <Text style={styles.listText}>{item.name}</Text>
-                        <Text style={styles.subText}>{catName} · ₹{item.price}</Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => handleDelete('menuItems', item.id)}
-                      style={styles.deleteBtn}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Ionicons name="trash-outline" size={15} color="#94a3b8" />
-                    </TouchableOpacity>
-                  </View>
-                );
-              }}
-            />
-          )}
-        </View>
-      )}
+      {/* ── Add Category Modal ── */}
+      <Modal visible={catModalVisible} transparent animationType="fade" onRequestClose={() => setCatModalVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
 
-      {/* MODAL FOR ADDING ITEM */}
-      <Modal visible={modalVisible} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Add New Dish</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={20} color="#64748b" />
+            <View style={styles.modalTop}>
+              <Text style={styles.modalTitle}>Add Category</Text>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => { setCatModalVisible(false); setNewCategoryName(''); }}>
+                <Text style={styles.closeBtnText}>×</Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalLabel}>Category</Text>
-            <View style={styles.pickerBorder}>
+            <View style={styles.divider} />
+
+            <Text style={styles.fieldLabel}>Category Name</Text>
+            <TextInput
+              style={styles.fieldInput}
+              placeholder="Category Name"
+              placeholderTextColor="#b0b8c9"
+              value={newCategoryName}
+              onChangeText={setNewCategoryName}
+            />
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setCatModalVisible(false); setNewCategoryName(''); }}>
+                <Text style={styles.cancelBtnText}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.addBtn, !newCategoryName.trim() && styles.addBtnDisabled]}
+                onPress={handleAddCategory}
+                disabled={!newCategoryName.trim()}
+              >
+                <Text style={styles.addBtnText}>ADD</Text>
+              </TouchableOpacity>
+            </View>
+
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Add Menu Item Modal ── */}
+      <Modal visible={itemModalVisible} transparent animationType="fade" onRequestClose={() => setItemModalVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modalCard, { maxWidth: 500 }]}>
+
+            <View style={styles.modalTop}>
+              <Text style={styles.modalTitle}>Add Menu Item</Text>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => { setItemModalVisible(false); setNewItemName(''); setNewItemPrice(''); setIsVeg(true); }}>
+                <Text style={styles.closeBtnText}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Menu (Category) Picker */}
+            <Text style={styles.fieldLabel}>Menu Name</Text>
+            <View style={styles.pickerWrap}>
               <Picker
                 selectedValue={selectedCategory}
-                onValueChange={(itemValue) => setSelectedCategory(itemValue)}
+                onValueChange={(v) => setSelectedCategory(v)}
                 style={styles.picker}
               >
+                <Picker.Item label="Select Menu" value="" color="#b0b8c9" />
                 {categories.map(cat => (
                   <Picker.Item key={cat.id} label={cat.name} value={cat.id} />
                 ))}
               </Picker>
             </View>
 
-            <Text style={styles.modalLabel}>Dish Name</Text>
+            {/* Veg / Non-Veg */}
+            <View style={styles.radioRow}>
+              <TouchableOpacity style={styles.radioOption} onPress={() => setIsVeg(true)}>
+                <View style={[styles.radioOuter, isVeg && styles.radioOuterActive]}>
+                  {isVeg && <View style={styles.radioInner} />}
+                </View>
+                <Text style={styles.radioLabel}>Vegetarian</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.radioOption} onPress={() => setIsVeg(false)}>
+                <View style={[styles.radioOuter, !isVeg && styles.radioOuterActive]}>
+                  {!isVeg && <View style={styles.radioInner} />}
+                </View>
+                <Text style={styles.radioLabel}>Non Vegetarian</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Item Name */}
+            <Text style={styles.fieldLabel}>Item Name</Text>
             <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Paneer Tikka"
-              placeholderTextColor="#cbd5e1"
+              style={styles.fieldInput}
+              placeholder="Item Name"
+              placeholderTextColor="#b0b8c9"
               value={newItemName}
               onChangeText={setNewItemName}
             />
 
-            <Text style={styles.modalLabel}>Price (₹)</Text>
+            {/* Item Price */}
+            <Text style={styles.fieldLabel}>Item Price</Text>
             <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. 250"
-              placeholderTextColor="#cbd5e1"
+              style={[styles.fieldInput, { width: '50%' }]}
+              placeholder="Item Price"
+              placeholderTextColor="#b0b8c9"
               keyboardType="numeric"
               value={newItemPrice}
               onChangeText={setNewItemPrice}
             />
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setModalVisible(false)}>
-                <Text style={styles.modalCancelText}>Cancel</Text>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setItemModalVisible(false); setNewItemName(''); setNewItemPrice(''); setIsVeg(true); }}>
+                <Text style={styles.cancelBtnText}>CANCEL</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={handleAddItem}>
-                <Ionicons name="checkmark" size={14} color="white" />
-                <Text style={styles.modalSaveText}>Save Dish</Text>
+              <TouchableOpacity style={styles.addBtnDark} onPress={handleAddItem}>
+                <Text style={styles.addBtnDarkText}>ADD</Text>
               </TouchableOpacity>
             </View>
+
           </View>
         </View>
       </Modal>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, backgroundColor: '#f8fafc' },
+  screen: { flex: 1, backgroundColor: '#f1f5f9', padding: 24 },
 
+  // Header
   pageHeader: { marginBottom: 20 },
-  header: { fontSize: 22, fontWeight: '800', color: '#0f172a', letterSpacing: -0.5 },
-  headerSub: { fontSize: 13, color: '#94a3b8', marginTop: 3, fontWeight: '500' },
+  pageTitle:  { fontSize: 22, fontWeight: '800', color: '#0f172a', letterSpacing: -0.3 },
+  pageSub:    { fontSize: 13, color: '#94a3b8', marginTop: 3, fontWeight: '500' },
 
-  // Tabs
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 8,
-    padding: 3,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 6,
-  },
-  activeTab: {
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  tabText: { fontWeight: '600', color: '#94a3b8', fontSize: 13 },
-  activeTabText: { color: '#0f172a' },
+  // Action Bar
+  actionBar:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  searchBox:      { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
+  searchInput:    { flex: 1, fontSize: 14, color: '#0f172a', outlineStyle: 'none' },
+  actionBtn:      { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#111827', paddingVertical: 11, paddingHorizontal: 18, borderRadius: 8 },
+  actionBtnText:  { color: 'white', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
 
-  content: { flex: 1 },
+  // Table
+  tableWrapper: { flex: 1, backgroundColor: 'white', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' },
+  tableHeader:  { flexDirection: 'row', backgroundColor: '#111827', paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center' },
+  th:           { fontSize: 12, fontWeight: '700', color: 'white', textAlign: 'center', letterSpacing: 0.3 },
 
-  // Add Row
-  addRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: 'white',
-    padding: 11,
-    borderRadius: 7,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    fontSize: 14,
-    color: '#0f172a',
-  },
-  addBtn: {
-    backgroundColor: '#0f172a',
-    padding: 11,
-    borderRadius: 7,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 44,
+  tableRow:    { flexDirection: 'row', paddingVertical: 16, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', alignItems: 'center' },
+  tableRowAlt: { backgroundColor: '#fafafa' },
+  td:          { fontSize: 14, color: '#374151', textAlign: 'center' },
+  tdBold:      { fontWeight: '700', color: '#111827' },
+  tdCell:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+
+  // Veg dot - solid, clear, no border
+  vegDot: { width: 22, height: 22, borderRadius: 11 },
+
+  // Row action buttons
+  editBtn:   { width: 32, height: 32, borderRadius: 16, backgroundColor: '#38bdf8', justifyContent: 'center', alignItems: 'center' },
+  deleteBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#ef4444', justifyContent: 'center', alignItems: 'center' },
+
+  emptyRow:  { paddingVertical: 50, alignItems: 'center', gap: 10 },
+  emptyText: { color: '#94a3b8', fontSize: 14, textAlign: 'center' },
+
+  // Modal shared
+  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalCard:  { backgroundColor: 'white', borderRadius: 12, padding: 28, width: '100%', maxWidth: 400, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
+  modalTop:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
+  closeBtn:   { width: 30, height: 30, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  closeBtnText: { fontSize: 18, color: '#374151', lineHeight: 20 },
+  divider:    { height: 1, backgroundColor: '#e2e8f0', marginBottom: 20 },
+
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: '#64748b', marginBottom: 8, letterSpacing: 0.3 },
+  fieldInput: {
+    borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8,
+    paddingVertical: 12, paddingHorizontal: 14,
+    fontSize: 14, color: '#0f172a', backgroundColor: '#f8fafc',
+    marginBottom: 16, outlineStyle: 'none',
   },
 
-  // List
-  listItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    borderRadius: 7,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  listItemLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  indexNumber: { fontSize: 11, fontWeight: '700', color: '#cbd5e1', width: 22 },
-  listText: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
-  subText: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
-  vegIndicator: { width: 8, height: 8, borderRadius: 4 },
-  deleteBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-  },
+  // Picker
+  pickerWrap: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, backgroundColor: '#f8fafc', overflow: 'hidden', marginBottom: 16 },
+  picker:     { height: 48, width: '100%' },
 
-  bigAddBtn: {
-    flexDirection: 'row',
-    gap: 8,
-    backgroundColor: '#0f172a',
-    padding: 13,
-    borderRadius: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  bigAddBtnText: { color: 'white', fontWeight: '700', fontSize: 13, letterSpacing: 0.3 },
+  // Radio buttons
+  radioRow:    { flexDirection: 'row', gap: 24, marginBottom: 16 },
+  radioOption: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  radioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#cbd5e1', justifyContent: 'center', alignItems: 'center' },
+  radioOuterActive: { borderColor: '#374151' },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#374151' },
+  radioLabel: { fontSize: 14, color: '#374151', fontWeight: '500' },
 
-  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10, paddingTop: 60 },
-  emptyText: { fontSize: 14, color: '#94a3b8' },
-
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalBox: {
-    backgroundColor: 'white',
-    width: '90%',
-    maxWidth: 420,
-    borderRadius: 10,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  modalHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
-  modalLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748b',
-    marginBottom: 6,
-    letterSpacing: 0.3,
-  },
-  pickerBorder: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 7,
-    backgroundColor: '#f8fafc',
-    overflow: 'hidden',
-    marginBottom: 14,
-  },
-  picker: { height: 48, width: '100%' },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 7,
-    marginBottom: 14,
-    fontSize: 14,
-    color: '#0f172a',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 6,
-  },
-  modalCancelBtn: {
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
-  },
-  modalCancelText: { fontWeight: '600', color: '#64748b', fontSize: 13 },
-  modalSaveBtn: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-    backgroundColor: '#0f172a',
-    paddingVertical: 9,
-    paddingHorizontal: 18,
-    borderRadius: 6,
-  },
-  modalSaveText: { color: 'white', fontWeight: '700', fontSize: 13 },
+  // Modal footer buttons
+  modalFooter:   { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
+  cancelBtn:     { backgroundColor: '#9f1239', paddingVertical: 11, paddingHorizontal: 22, borderRadius: 8, justifyContent: 'center' },
+  cancelBtnText: { color: 'white', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
+  addBtn:        { backgroundColor: '#e2e8f0', paddingVertical: 11, paddingHorizontal: 22, borderRadius: 8, justifyContent: 'center' },
+  addBtnDisabled:{ opacity: 0.5 },
+  addBtnText:    { color: '#94a3b8', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
+  addBtnDark:    { backgroundColor: '#111827', paddingVertical: 11, paddingHorizontal: 22, borderRadius: 8, justifyContent: 'center' },
+  addBtnDarkText:{ color: 'white', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
 });
