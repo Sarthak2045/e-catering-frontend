@@ -235,8 +235,7 @@ export default function DashboardScreen() {
           </head>
           <body>
             <div class="center bold lg-text">E-Catering Orders</div>
-            <div class="center" style="margin-top: 4px;">Samrat Catering, Railway Station</div>
-            <div class="center">Phone : 9876543210</div>
+            <div class="center" style="margin-top: 4px;">26 Shree Siddhivinayak Complex, Railway Station Vadodra</div>
             
             <div class="divider"></div>
             
@@ -269,7 +268,7 @@ export default function DashboardScreen() {
             <div class="center bold lg-text">${(order.trainInfo || "Train").substring(0, 10)} | ${order.coach || "-"}/${order.seat || "-"}</div>
             <div class="divider"></div>
             
-            <div class="center">www.samratcatering.com</div>
+            <div class="center">www.imperiial.tech</div>
           </body>
         </html>
       `;
