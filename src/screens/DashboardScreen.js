@@ -11,10 +11,14 @@ import { db } from '../firebaseConfig';
 
 const screenWidth = Dimensions.get('window').width;
 
-let isShiftStarted = false; 
+let isShiftStarted = false;
 
-const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign }) => {
+const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }) => {
   const [expanded, setExpanded] = useState(false);
+  const assignBtnRef = useRef(null);
+  const statusBtnRef = useRef(null);
+
+  const isAssigned = !!item.assignedExecutiveName;
 
   const isCancelled = item.status === 'Cancelled';
   const isCompleted = item.status === 'Completed';
@@ -22,9 +26,23 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign }) => {
   const badgeTxt = isCancelled ? '#dc2626' : (isCompleted ? '#16a34a' : '#b45309');
   const badgeBorder = isCancelled ? '#fecaca' : (isCompleted ? '#bbf7d0' : '#fde68a');
 
-  const isCOD = item.paymentType === 'COD';
+  const codTypes = ['COD', 'CASH', 'CASH_ON_DELIVERY'];
+  const isCOD = codTypes.includes((item.paymentType || '').toUpperCase().replace(/\s+/g, '_'));
   const paymentColor = isCOD ? '#b45309' : '#0f766e';
-  const amountToCollect = isCOD ? (item.totalAmount || 0) : 0;
+  const paymentLabel = isCOD ? 'COD' : 'ONLINE';
+  const amountToCollect = isCOD ? (item.totalAmount || 0) : 0;  // ← ADD THIS
+
+  const handleAssignPress = () => {
+    assignBtnRef.current?.measure((fx, fy, width, height, px, py) => {
+      onAssign(item, { x: px, y: py, width, height });
+    });
+  };
+
+  const handleStatusPress = () => {
+    statusBtnRef.current?.measure((fx, fy, width, height, px, py) => {
+      onEditStatus(item, { x: px, y: py, width, height });
+    });
+  };
 
   return (
     <View style={styles.cardContainer}>
@@ -43,26 +61,54 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign }) => {
         <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.orderDate || '—'}</Text>
         <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.orderTime || '—'}</Text>
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>{item.vendorName}</Text>
-        
+
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={2}>
           {item.trainInfo || 'N/A'}{' '}
           <Text style={{ color: '#dc2626', fontWeight: '700' }}>({item.coach || 'No Coach'}{item.seat ? ` / ${item.seat}` : ''})</Text>
         </Text>
 
         <View style={{ flex: 0.9 }}>
-          <Text style={[styles.paymentTag, { color: paymentColor, borderColor: paymentColor }]}>{item.paymentType || 'ONLINE'}</Text>
+          <Text style={[styles.paymentTag, { color: paymentColor, borderColor: paymentColor }]}>{paymentLabel}</Text>
         </View>
-        
+
         <View style={{ flex: 1.2, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => onAssign(item)}>
-            <Ionicons name="bicycle-outline" size={16} color={item.assignedExecutiveName ? "#16a34a" : "#475569"} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => onEditStatus(item)}>
+
+          {/* Assign Executive button */}
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity
+              ref={assignBtnRef}
+              style={styles.iconBtn}
+              onPress={handleAssignPress}
+            >
+              <Ionicons name="bicycle-outline" size={16} color="#475569" />
+            </TouchableOpacity>
+            {isAssigned && (
+              <View style={styles.tickBadge}>
+                <Ionicons name="checkmark" size={8} color="#fff" />
+              </View>
+            )}
+          </View>
+
+          {/* Edit Status button */}
+          <TouchableOpacity ref={statusBtnRef} style={styles.iconBtn} onPress={handleStatusPress}>
             <Ionicons name="create-outline" size={16} color="#475569" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => onPrint(item)}>
-            <Ionicons name="print-outline" size={16} color="#475569" />
-          </TouchableOpacity>
+
+          {/* Print button */}
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => onPrint(item)}
+            >
+              <Ionicons name="print-outline" size={16} color="#475569" />
+            </TouchableOpacity>
+            {isPrinted && (
+              <View style={styles.tickBadge}>
+                <Ionicons name="checkmark" size={8} color="#fff" />
+              </View>
+            )}
+          </View>
+
         </View>
       </TouchableOpacity>
 
@@ -96,8 +142,8 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign }) => {
 
               {item.assignedExecutiveName && (
                 <View style={styles.assignedBadgeBox}>
-                   <Text style={styles.assignedBadgeLabel}>ASSIGNED TO:</Text>
-                   <Text style={styles.assignedBadgeName}>{item.assignedExecutiveName}</Text>
+                  <Text style={styles.assignedBadgeLabel}>ASSIGNED TO:</Text>
+                  <Text style={styles.assignedBadgeName}>{item.assignedExecutiveName}</Text>
                 </View>
               )}
             </View>
@@ -141,14 +187,16 @@ export default function DashboardScreen() {
   const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [dropdownPos, setDropdownPos] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [printedOrders, setPrintedOrders] = useState(new Set());
 
   const soundRef = useRef(null);
   const isFirstLoad = useRef(true);
 
- async function initSoundSystem() {
+  async function initSoundSystem() {
     try {
       if (Platform.OS === 'web') {
-        const audio = new window.Audio(alertSoundFile); // Uses the URL now
+        const audio = new window.Audio(alertSoundFile);
         await audio.play().then(() => audio.pause()).catch(e => {});
         soundRef.current = audio;
       } else {
@@ -158,6 +206,7 @@ export default function DashboardScreen() {
       isShiftStarted = true; setAppReady(true);
     } catch (error) { isShiftStarted = true; setAppReady(true); }
   }
+
   async function playAlert() {
     if (Platform.OS === 'web' && soundRef.current) {
       soundRef.current.currentTime = 0; soundRef.current.play().catch(e => {});
@@ -199,24 +248,32 @@ export default function DashboardScreen() {
     setLoading(false);
   };
 
-  // 🟢 PURE JAVASCRIPT WEB PRINTING (NO PLUGINS REQUIRED)
   const handlePrint = async (order) => {
     try {
       let itemsHtml = "";
       if (order.items && order.items.length > 0) {
         order.items.forEach(item => {
           itemsHtml += `
-            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-              <span style="width: 70%;">${item.name}</span>
-              <span style="width: 30%; text-align: right;">${item.quantity}</span>
-            </div>`;
+            <tr>
+              <td style="padding: 4px 2px; border-bottom: 1px solid #eee; width: 75%; vertical-align: top;">${item.name}</td>
+              <td style="padding: 4px 2px; border-bottom: 1px solid #eee; text-align: right; vertical-align: top;">${item.quantity}</td>
+            </tr>`;
         });
       }
 
-      const amountToCollect = (order.paymentType || '').toUpperCase() === 'COD' ? order.totalAmount : 0;
-      const remarksHtml = order.remark && order.remark.trim() !== '' 
-        ? `<div style="margin-top: 5px; font-weight: bold;">Remarks: <br/>${order.remark}</div>` 
+      const codTypes = ['COD', 'CASH', 'CASH_ON_DELIVERY'];
+      const rawPaymentType = (order.paymentType || 'ONLINE').toUpperCase().replace(/\s+/g, '_');
+      const isCOD = codTypes.includes(rawPaymentType);
+      const paymentType = isCOD ? 'COD' : 'ONLINE';
+      const amountToCollect = isCOD ? (order.totalAmount || 0) : 0;
+
+      const remarksHtml = order.remark && order.remark.trim() !== ''
+        ? `<tr><td style="padding: 3px 0;">Remarks</td><td style="text-align:right; padding: 3px 0;">${order.remark}</td></tr>`
         : '';
+
+      // Train number and coach/seat for the bottom box
+      const trainNo = (order.trainInfo || 'N/A');
+      const coachSeat = `${order.coach || '-'}/${order.seat || '-'}`;
 
       const htmlContent = `
         <html>
@@ -224,84 +281,159 @@ export default function DashboardScreen() {
             <title>Receipt</title>
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
             <style>
-              @page { margin: 0; size: 58mm auto; }
-              body { font-family: monospace; width: 58mm; margin: 0; padding: 10px; font-size: 12px; color: black; }
+              @page { margin: 0; size: 80mm auto; }
+              * { box-sizing: border-box; }
+              body {
+                font-family: 'Courier New', Courier, monospace;
+                width: 80mm;
+                margin: 0 auto;
+                padding: 10px 12px 16px 12px;
+                font-size: 12px;
+                color: #000;
+              }
               .center { text-align: center; }
               .bold { font-weight: bold; }
-              .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-              .divider { border-bottom: 1px dashed black; margin: 8px 0; }
-              .lg-text { font-size: 16px; }
+              .divider { border: none; border-top: 1px dashed #000; margin: 7px 0; }
+              .detail-table { width: 100%; border-collapse: collapse; }
+              .detail-table td { padding: 2px 0; vertical-align: top; }
+              .detail-table td:last-child { text-align: right; }
+              .items-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
+              .items-head th {
+                font-weight: bold;
+                text-align: left;
+                padding: 3px 2px;
+                border-top: 1px dashed #000;
+                border-bottom: 1px dashed #000;
+              }
+              .items-head th:last-child { text-align: right; }
+              .totals-table { width: 100%; border-collapse: collapse; }
+              .totals-table td { padding: 2px 0; }
+              .totals-table td:last-child { text-align: right; }
+
+              /* ── Payment Mode Box ── */
+              .payment-box {
+                border: 2.5px solid #000;
+                text-align: center;
+                padding: 10px 4px;
+                margin: 10px 0 0 0;
+                font-size: 32px;
+                font-weight: 900;
+                letter-spacing: 3px;
+              }
+
+              /* ── Train / Coach Box ── */
+              .train-box {
+                border: 2.5px solid #000;
+                display: flex;
+                margin: 0 0 10px 0;
+              }
+              .train-cell {
+                flex: 1;
+                text-align: center;
+                padding: 10px 4px;
+                font-size: 20px;
+                font-weight: 900;
+                letter-spacing: 1px;
+              }
+              .train-cell.divider-right {
+                border-right: 2.5px solid #000;
+              }
             </style>
           </head>
           <body>
-            <div class="center bold lg-text">E-Catering Orders</div>
-            <div class="center" style="margin-top: 4px;">26 Shree Siddhivinayak Complex, Railway Station Vadodra</div>
-            
-            <div class="divider"></div>
-            
-            <div class="row"><span>Order No.</span><span>${order.orderNo || order.pnr || "N/A"}</span></div>
-            <div class="row"><span>Vendor</span><span>${(order.vendorName || "Samrat").substring(0, 15)}</span></div>
-            <div class="row"><span>Date</span><span>${order.orderDate || new Date().toLocaleDateString('en-GB')}</span></div>
-            <div class="row"><span>Time</span><span>${order.orderTime || new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}</span></div>
-            <div class="row"><span>Customer</span><span>${(order.customerName || "Customer").substring(0, 15)}</span></div>
-            <div class="row"><span>Mobile</span><span>${order.contactNo || "N/A"}</span></div>
-            
-            <div class="divider"></div>
-            
-            <div class="row bold"><span>Item</span><span>Qty</span></div>
-            <div class="divider" style="margin-top: 2px;"></div>
-            ${itemsHtml}
-            
-            <div class="divider"></div>
-            
-            ${remarksHtml}
-            <div class="row"><span>Advance:</span><span>Rs 0</span></div>
-            <div class="row"><span>GST:</span><span>Rs ${order.tax || 0}</span></div>
-            <div class="row"><span>Delivery:</span><span>Rs ${order.deliveryCharge || 0}</span></div>
-            <div class="row"><span>Discount:</span><span>Rs 0</span></div>
-            <div class="row bold"><span>Total:</span><span>Rs ${order.totalAmount || 0}</span></div>
-            <div class="row bold"><span>To Collect:</span><span>Rs ${amountToCollect || 0}</span></div>
-            
-            <div class="divider"></div>
-            <div class="center bold lg-text" style="font-size: 18px;">${(order.paymentType || 'ONLINE').toUpperCase()}</div>
-            <div class="divider"></div>
-            <div class="center bold lg-text">${(order.trainInfo || "Train").substring(0, 10)} | ${order.coach || "-"}/${order.seat || "-"}</div>
-            <div class="divider"></div>
-            
-            <div class="center">www.imperiial.tech</div>
+
+            <!-- Header -->
+            <div class="center bold" style="font-size: 16px; margin-bottom: 2px;">E-Catering Orders</div>
+            <div class="center" style="font-size: 11px;">26 - Shree Siddhivinayak Complex,<br/>Railway Station Vadodara</div>
+
+            <hr class="divider"/>
+
+            <!-- Order Details -->
+            <div class="center" style="font-size: 11px; margin-bottom: 4px;">Phone :</div>
+            <table class="detail-table">
+              <tr><td>Order No.</td><td>${order.orderNo || order.pnr || 'N/A'}</td></tr>
+              <tr><td>Vendor</td><td>${order.vendorName || 'Samrat'}</td></tr>
+              <tr><td>Date</td><td>${order.orderDate || new Date().toLocaleDateString('en-GB')}</td></tr>
+              <tr><td>Time</td><td>${order.orderTime || new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}</td></tr>
+              <tr><td>Customer Name</td><td>${order.customerName || 'Customer'}</td></tr>
+              <tr><td>Mobile</td><td>${order.contactNo || 'N/A'}</td></tr>
+            </table>
+
+            <hr class="divider"/>
+
+            <!-- Items -->
+            <table class="items-table">
+              <thead class="items-head">
+                <tr><th>Item</th><th>Qty</th></tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+            </table>
+
+            <hr class="divider"/>
+
+            <!-- Totals -->
+            <table class="totals-table">
+              ${remarksHtml}
+              <tr><td>Advance:</td><td>₹ 0</td></tr>
+              <tr><td>GST:</td><td>₹ ${order.tax || 0}</td></tr>
+              <tr><td>Tax:</td><td>₹ 0</td></tr>
+              <tr><td>Discount:</td><td>₹ 0</td></tr>
+              <tr class="bold"><td>Total:</td><td>₹ ${order.totalAmount || 0}</td></tr>
+              <tr class="bold"><td>Amount to collect:</td><td>₹ ${amountToCollect}</td></tr>
+            </table>
+
+            <!-- Payment Mode Box (big, bold, bordered) -->
+            <div class="payment-box">${paymentType}</div>
+
+            <!-- Train + Coach/Seat Box (split, bordered) -->
+            <div class="train-box">
+              <div class="train-cell divider-right">${trainNo}</div>
+              <div class="train-cell">${coachSeat}</div>
+            </div>
+
+            <!-- Footer -->
+            <div class="center" style="font-size: 11px;">www.imperiial.tech</div>
+
           </body>
         </html>
       `;
 
       if (Platform.OS === 'web') {
-        // Create an invisible iframe to hold the receipt
         const iframe = document.createElement('iframe');
         iframe.style.display = 'none';
         document.body.appendChild(iframe);
         iframe.contentDocument.write(htmlContent);
         iframe.contentDocument.close();
-        
-        // Wait a tiny bit for the browser to render the styles, then print
         setTimeout(() => {
           iframe.contentWindow.focus();
           iframe.contentWindow.print();
-          // Clean up the invisible iframe after printing so they don't pile up
-          setTimeout(() => {
-            document.body.removeChild(iframe);
-          }, 1000);
+          // Mark this order as printed so the button turns green
+          setPrintedOrders(prev => new Set([...prev, order.id]));
+          setTimeout(() => { document.body.removeChild(iframe); }, 1000);
         }, 200);
       } else {
         Alert.alert("Notice", "Printing is currently configured for Web only.");
       }
-
     } catch (error) {
       console.error("Printing Error:", error);
       Alert.alert("Print Failed", "Could not generate the receipt.");
     }
   };
 
-  const openStatusModal = (order) => { setSelectedOrder(order); setStatusModalVisible(true); };
-  const openAssignModal = (order) => { setSelectedOrder(order); setAssignModalVisible(true); };
+  // Updated to capture button position
+  const openStatusModal = (order, pos) => {
+    setSelectedOrder(order);
+    setDropdownPos(pos);
+    setStatusModalVisible(true);
+  };
+
+  const openAssignModal = (order, pos) => {
+    setSelectedOrder(order);
+    setDropdownPos(pos);
+    setAssignModalVisible(true);
+  };
 
   const handleUpdateStatus = async (newStatus) => {
     if (!selectedOrder) return;
@@ -330,12 +462,8 @@ export default function DashboardScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
-        <View>
-          <Text style={styles.heading}>Live Orders</Text>
-          <View style={styles.activeCountRow}>
-            <View style={styles.activeDot} />
-            <Text style={styles.subHeading}>{activeCount} Active Order{activeCount !== 1 ? 's' : ''}</Text>
-          </View>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={styles.heading}>Active Orders</Text>
         </View>
         <TouchableOpacity style={styles.settingsBtn} onPress={() => { setIsAdminUnlocked(false); setAdminPin(''); setSettingsVisible(true); }}>
           <Ionicons name="settings-outline" size={16} color="#64748b" />
@@ -366,58 +494,125 @@ export default function DashboardScreen() {
           <FlatList
             data={orders.filter(o => o.status === 'Active')}
             keyExtractor={item => item.id}
-            renderItem={({ item }) => <ExpandableOrderRow item={item} onPrint={handlePrint} onEditStatus={openStatusModal} onAssign={openAssignModal} />}
+            renderItem={({ item }) => (
+              <ExpandableOrderRow
+                item={item}
+                onPrint={handlePrint}
+                onEditStatus={openStatusModal}
+                onAssign={openAssignModal}
+                isPrinted={printedOrders.has(item.id)}
+              />
+            )}
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingBottom: 50, flexGrow: 1 }}
           />
         )}
       </View>
 
+      {/* ── Status Dropdown ── */}
       <Modal visible={statusModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.actionModalContainer}>
-            <Text style={styles.modalTitle}>Update Order Status</Text>
-            <TouchableOpacity style={[styles.actionBtn, {backgroundColor:'#16a34a'}]} onPress={() => handleUpdateStatus('Completed')}><Text style={styles.actionBtnText}>Mark as Delivered</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.actionBtn, {backgroundColor:'#dc2626'}]} onPress={() => handleUpdateStatus('Cancelled')}><Text style={styles.actionBtnText}>Cancel Order</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.actionBtn, {backgroundColor:'#f1f5f9', borderWidth:1, borderColor:'#e2e8f0'}]} onPress={() => setStatusModalVisible(false)}><Text style={[styles.actionBtnText, {color:'#0f172a'}]}>Close</Text></TouchableOpacity>
+        <TouchableOpacity
+          style={styles.dropdownBackdrop}
+          activeOpacity={1}
+          onPress={() => setStatusModalVisible(false)}
+        >
+          <View
+            style={[
+              styles.dropdownContainer,
+              { top: dropdownPos.y + dropdownPos.height + 6, left: dropdownPos.x - 160 }
+            ]}
+          >
+            <Text style={styles.dropdownTitle}>UPDATE STATUS</Text>
+
+            <TouchableOpacity
+              style={[styles.dropdownItem, { borderLeftColor: '#16a34a' }]}
+              onPress={() => handleUpdateStatus('Completed')}
+            >
+              <Ionicons name="checkmark-circle-outline" size={16} color="#16a34a" />
+              <Text style={[styles.dropdownItemText, { color: '#16a34a' }]}>Mark as Delivered</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.dropdownItem, { borderLeftColor: '#dc2626' }]}
+              onPress={() => handleUpdateStatus('Cancelled')}
+            >
+              <Ionicons name="close-circle-outline" size={16} color="#dc2626" />
+              <Text style={[styles.dropdownItemText, { color: '#dc2626' }]}>Cancel Order</Text>
+            </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
+      {/* ── Assign Executive Dropdown ── */}
       <Modal visible={assignModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.actionModalContainer}>
-            <Text style={styles.modalTitle}>Assign Delivery Executive</Text>
-            <ScrollView style={{maxHeight: 300, width: '100%', marginBottom: 10}} showsVerticalScrollIndicator={false}>
+        <TouchableOpacity
+          style={styles.dropdownBackdrop}
+          activeOpacity={1}
+          onPress={() => setAssignModalVisible(false)}
+        >
+          <View
+            style={[
+              styles.dropdownContainer,
+              { top: dropdownPos.y + dropdownPos.height + 6, left: dropdownPos.x - 180 }
+            ]}
+          >
+            <Text style={styles.dropdownTitle}>ASSIGN EXECUTIVE</Text>
+            <ScrollView style={{ maxHeight: 240 }} showsVerticalScrollIndicator={false}>
               {executives.map(exec => (
-                <TouchableOpacity key={exec.id} style={styles.execRow} onPress={() => handleAssignExec(exec)}>
-                  <Ionicons name="person-circle-outline" size={24} color="#475569" /><Text style={styles.execName}>{exec.name}</Text>
+                <TouchableOpacity
+                  key={exec.id}
+                  style={styles.execDropdownRow}
+                  onPress={() => handleAssignExec(exec)}
+                >
+                  <Ionicons name="person-circle-outline" size={20} color="#475569" />
+                  <Text style={styles.execName}>{exec.name}</Text>
                 </TouchableOpacity>
               ))}
-              {executives.length === 0 && <Text style={{textAlign:'center', color:'#94a3b8', padding: 20}}>No executives found.</Text>}
+              {executives.length === 0 && (
+                <Text style={{ textAlign: 'center', color: '#94a3b8', padding: 16, fontSize: 13 }}>
+                  No executives found.
+                </Text>
+              )}
             </ScrollView>
-            <TouchableOpacity style={[styles.actionBtn, {backgroundColor:'#f1f5f9', borderWidth:1, borderColor:'#e2e8f0', marginBottom: 0}]} onPress={() => setAssignModalVisible(false)}><Text style={[styles.actionBtnText, {color:'#0f172a'}]}>Cancel</Text></TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
 
+      {/* ── Admin / Settings Modal (stays centered — intentional) ── */}
       <Modal visible={settingsVisible} transparent animationType="fade" onRequestClose={() => setSettingsVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Admin Panel</Text>
-              <TouchableOpacity onPress={() => setSettingsVisible(false)}><Ionicons name="close" size={20} color="#64748b" /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setSettingsVisible(false)}>
+                <Ionicons name="close" size={20} color="#64748b" />
+              </TouchableOpacity>
             </View>
             {!isAdminUnlocked ? (
               <View>
                 <Text style={styles.pinLabel}>Enter Admin PIN</Text>
-                <TextInput style={styles.pinInput} placeholder="• • • •" keyboardType="numeric" secureTextEntry value={adminPin} onChangeText={setAdminPin} />
-                <TouchableOpacity style={styles.unlockBtn} onPress={() => adminPin === '1234' ? setIsAdminUnlocked(true) : Alert.alert('Wrong PIN')}><Text style={styles.unlockBtnText}>Unlock</Text></TouchableOpacity>
+                <TextInput
+                  style={styles.pinInput}
+                  placeholder="• • • •"
+                  keyboardType="numeric"
+                  secureTextEntry
+                  value={adminPin}
+                  onChangeText={setAdminPin}
+                />
+                <TouchableOpacity
+                  style={styles.unlockBtn}
+                  onPress={() => adminPin === '1234' ? setIsAdminUnlocked(true) : Alert.alert('Wrong PIN')}
+                >
+                  <Text style={styles.unlockBtnText}>Unlock</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <View>
                 <Text style={styles.dangerWarning}>This will permanently delete all orders from the database.</Text>
-                <TouchableOpacity style={styles.dangerBtn} onPress={handleMassDelete}><Ionicons name="trash-outline" size={16} color="white" /><Text style={styles.dangerBtnText}>Delete Entire Database</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.dangerBtn} onPress={handleMassDelete}>
+                  <Ionicons name="trash-outline" size={16} color="white" />
+                  <Text style={styles.dangerBtnText}>Delete Entire Database</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -442,15 +637,28 @@ const styles = StyleSheet.create({
   subHeading: { fontSize: 13, color: '#64748b', fontWeight: '500' },
   settingsBtn: { width: 36, height: 36, borderRadius: 8, backgroundColor: 'white', borderWidth: 1, borderColor: '#e2e8f0', justifyContent: 'center', alignItems: 'center' },
   tableContainer: { flex: 1, backgroundColor: 'white', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' },
-  tableHeader: { flexDirection: 'row', backgroundColor: '#f8fafc', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderColor: '#e2e8f0', alignItems: 'center' },
-  col: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8 },
+  tableHeader: { flexDirection: 'row', backgroundColor: '#0f172a', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderColor: '#e2e8f0', alignItems: 'center' },
+  col: { fontSize: 10, fontWeight: '700', color: '#ffffff', letterSpacing: 0.8 },
   cardContainer: { borderBottomWidth: 1, borderColor: '#f1f5f9' },
   tableRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center', backgroundColor: 'white' },
   tableRowExpanded: { backgroundColor: '#f8fafc' },
-  cell: { fontSize: 13, color: '#334155' },
+  cell: { fontSize: 13, color: '#334155', fontWeight: '700' },
   badge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, borderWidth: 1, alignSelf: 'flex-start' },
   paymentTag: { fontSize: 10, fontWeight: '700', borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', letterSpacing: 0.5 },
   iconBtn: { width: 32, height: 32, borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center' },
+  tickBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#16a34a',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#fff',
+  },
   emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
   emptyStateText: { fontSize: 14, color: '#94a3b8' },
   expandedContent: { backgroundColor: '#f8fafc', padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0' },
@@ -477,9 +685,64 @@ const styles = StyleSheet.create({
   amountToCollectBar: { backgroundColor: '#0f172a', padding: 10, borderRadius: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   atcLabel: { color: '#94a3b8', fontWeight: '700', fontSize: 10, letterSpacing: 0.8 },
   atcValue: { color: 'white', fontWeight: '800', fontSize: 15 },
+
+  // ── Dropdown styles ──
+  dropdownBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  dropdownContainer: {
+    position: 'absolute',
+    backgroundColor: 'white',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    width: 210,
+    paddingVertical: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  dropdownTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94a3b8',
+    letterSpacing: 0.8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderLeftWidth: 3,
+    borderLeftColor: 'transparent',
+  },
+  dropdownItemText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  execDropdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderColor: '#f1f5f9',
+    gap: 10,
+  },
+
+  // ── Admin modal (centered — intentional) ──
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   modalContainer: { backgroundColor: 'white', width: 360, borderRadius: 10, padding: 24, borderWidth: 1, borderColor: '#e2e8f0' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
   pinLabel: { fontSize: 12, fontWeight: '600', color: '#64748b', marginBottom: 8 },
   pinInput: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6, padding: 12, textAlign: 'center', fontSize: 18, letterSpacing: 8, marginBottom: 12, color: '#0f172a', backgroundColor: '#f8fafc' },
   unlockBtn: { backgroundColor: '#0f172a', padding: 12, borderRadius: 6, alignItems: 'center' },
@@ -487,10 +750,5 @@ const styles = StyleSheet.create({
   dangerWarning: { fontSize: 12, color: '#64748b', marginBottom: 14, lineHeight: 18 },
   dangerBtn: { flexDirection: 'row', gap: 8, backgroundColor: '#dc2626', padding: 13, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   dangerBtnText: { color: 'white', fontWeight: '700', fontSize: 13 },
-  actionModalContainer: { backgroundColor: 'white', width: 320, borderRadius: 10, padding: 24, borderWidth: 1, borderColor: '#e2e8f0', alignItems:'center' },
-  modalTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a', marginBottom: 20 },
-  actionBtn: { width: '100%', padding: 14, borderRadius: 8, alignItems: 'center', marginBottom: 10 },
-  actionBtnText: { color: 'white', fontWeight: '700', fontSize: 13, letterSpacing: 0.3 },
-  execRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderColor: '#f1f5f9', width: '100%', gap: 10 },
-  execName: { fontSize: 14, fontWeight: '600', color: '#0f172a' }
+  execName: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
 });
