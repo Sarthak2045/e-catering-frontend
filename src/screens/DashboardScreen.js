@@ -61,10 +61,10 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
         
         {/* 🟢 CHANGED: Now pulls deliveryDate and deliveryTime */}
         <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>
-  {item.deliveryDate 
-    ? new Date(item.deliveryDate).toLocaleDateString('en-GB') 
-    : '—'}
-</Text>
+           {item.deliveryDate 
+            ? new Date(item.deliveryDate).toLocaleDateString('en-GB') 
+            : '—'}
+            </Text>
         <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.deliveryTime || '—'}</Text>
         
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>{item.vendorName}</Text>
@@ -292,8 +292,8 @@ export default function DashboardScreen() {
              font-family: 'Courier New', Courier, monospace;
              width: 80mm;
              margin: 0 auto;
-             padding: 10px 12px 16px 12px;
-             font-size: 12px;
+             padding: 10px 6px 16px 10px;
+             font-size: 11px;
              color: #000;
              font-weight: 900;
             -webkit-print-color-adjust: exact;
@@ -303,9 +303,9 @@ export default function DashboardScreen() {
         .bold { font-weight: bold; }
         .divider { border: none; border-top: 1px dashed #000; margin: 7px 0; }
         .detail-table { width: 100%; border-collapse: collapse; }
-        .detail-table tr td { padding: 2px 0; vertical-align: top; }
-        .detail-table tr td:first-child { white-space: nowrap; padding-right: 8px; }
-        .detail-table tr td:last-child { text-align: right; word-break: break-word; }
+        .detail-table tr td { padding: 1px 0; vertical-align: top; }
+        .detail-table tr td:first-child { white-space: nowrap; padding-right: 4px;  width: 95px; }
+        .detail-table tr td:last-child { text-align: right; max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
         .items-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
         .items-head th {
           font-weight: bold;
