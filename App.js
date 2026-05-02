@@ -90,22 +90,14 @@ export default function App() {
 
             <View style={styles.menuSection}>
               <Text style={styles.sectionHeading}>MAIN MENU</Text>
-              <SidebarItem icon="grid-outline" label="Dashboard" isActive={currentScreen === 'Dashboard'} />
+              <SidebarItem icon="cash-outline" label="Daily Business" isActive={currentScreen === 'Daily Business'} />
               <SidebarItem icon="add-circle-outline" label="Add Order" isActive={currentScreen === 'Add Order'} />
-            </View>
-
-            <View style={styles.menuSection}>
-              <Text style={styles.sectionHeading}>LOGISTICS</Text>
+              <SidebarItem icon="restaurant-outline" label="Menu" isActive={currentScreen === 'Menu'} />
+              <SidebarItem icon="bar-chart-outline" label="Reports" isActive={currentScreen === 'Reports'} />
               <SidebarItem icon="bicycle-outline" label="Delivery Team" isActive={currentScreen === 'Delivery Team'} />
+              <SidebarItem icon="grid-outline" label="Active" isActive={currentScreen === 'Dashboard'} />
               <SidebarItem icon="checkmark-circle-outline" label="Delivered" isActive={currentScreen === 'Delivered'} />
               <SidebarItem icon="close-circle-outline" label="Cancelled" isActive={currentScreen === 'Cancelled'} />
-            </View>
-
-            <View style={styles.menuSection}>
-              <Text style={styles.sectionHeading}>MANAGEMENT</Text>
-              <SidebarItem icon="restaurant-outline" label="Menu" isActive={currentScreen === 'Menu'} />
-              <SidebarItem icon="cash-outline" label="Daily Business" isActive={currentScreen === 'Daily Business'} />
-              <SidebarItem icon="bar-chart-outline" label="Reports" isActive={currentScreen === 'Reports'} />
             </View>
           </View>
 
