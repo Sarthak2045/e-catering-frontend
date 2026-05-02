@@ -60,7 +60,11 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
         <Text style={[styles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>{item.orderNo}</Text>
         
         {/* 🟢 CHANGED: Now pulls deliveryDate and deliveryTime */}
-        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.deliveryDate || '—'}</Text>
+        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>
+  {item.deliveryDate 
+    ? new Date(item.deliveryDate).toLocaleDateString('en-GB') 
+    : '—'}
+</Text>
         <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.deliveryTime || '—'}</Text>
         
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>{item.vendorName}</Text>
