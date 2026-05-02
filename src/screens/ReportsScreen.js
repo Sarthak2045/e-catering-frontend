@@ -26,19 +26,17 @@ const clearTime = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
 const fmtDate = (d) => d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-// Normalise payment type
 const COD_TYPES = ['COD', 'CASH', 'CASH_ON_DELIVERY'];
 const normPayment = (p) =>
   COD_TYPES.includes((p || '').toUpperCase().replace(/\s+/g, '_')) ? 'COD' : 'ONLINE';
 
-// Safe date parser — no UTC shift
 const parseDate = (str) => {
   if (!str) return new Date(0);
   const p = str.split('-');
   if (p.length === 3 && p[0].length === 4)
-    return new Date(+p[0], +p[1] - 1, +p[2]);   // YYYY-MM-DD
+    return new Date(+p[0], +p[1] - 1, +p[2]);
   if (p.length === 3 && p[2].length === 4)
-    return new Date(+p[2], +p[1] - 1, +p[0]);   // DD-MM-YYYY
+    return new Date(+p[2], +p[1] - 1, +p[0]);
   return new Date(str);
 };
 
@@ -175,7 +173,7 @@ export default function ReportsScreen() {
     const q = query(collection(db, 'orders'));
     const unsub = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      data.sort((a, b) => parseDate(b.orderDate) - parseDate(a.orderDate));
+      data.sort((a, b) => parseDate(b.deliveryDate) - parseDate(a.deliveryDate));
       setOrders(data);
       applyFilter(data, 'Today', new Date(), new Date());
       setLoading(false);
@@ -188,19 +186,19 @@ export default function ReportsScreen() {
     let result  = [];
     if (type === 'Today') {
       result = data.filter(o =>
-        clearTime(parseDate(o.orderDate)).getTime() === today.getTime()
+        clearTime(parseDate(o.deliveryDate)).getTime() === today.getTime()
       );
     } else if (type === 'Week') {
       const from = new Date(today); from.setDate(today.getDate() - 7);
-      result = data.filter(o => parseDate(o.orderDate) >= from);
+      result = data.filter(o => parseDate(o.deliveryDate) >= from);
     } else if (type === 'Month') {
       const from = new Date(today); from.setDate(today.getDate() - 30);
-      result = data.filter(o => parseDate(o.orderDate) >= from);
+      result = data.filter(o => parseDate(o.deliveryDate) >= from);
     } else if (type === 'Custom') {
       const from = clearTime(sd);
       const to   = new Date(clearTime(ed)); to.setDate(to.getDate() + 1);
       result = data.filter(o => {
-        const d = parseDate(o.orderDate);
+        const d = parseDate(o.deliveryDate);
         return d >= from && d < to;
       });
     }
@@ -214,7 +212,6 @@ export default function ReportsScreen() {
     else setFilterType('Custom');
   };
 
-  // ── Status filter: strictly Completed / Cancelled / both — Active never included
   const displayOrders = filteredOrders.filter(o => {
     const q = search.toLowerCase();
     const matchMode = paymentMode === 'All' || normPayment(o.paymentType) === paymentMode;
@@ -231,7 +228,6 @@ export default function ReportsScreen() {
     return matchMode && matchStatus && matchSearch;
   });
 
-  // ── Vendor summary — revenue from Completed orders only
   const vendorSummary = (() => {
     const map = {};
     displayOrders.forEach(o => {
@@ -245,7 +241,6 @@ export default function ReportsScreen() {
 
       if (o.status === 'Cancelled') { map[v].cancelled++; return; }
 
-      // Only Completed below this point
       map[v].delivered++;
       const pm  = normPayment(o.paymentType);
       const amt = o.totalAmount || 0;
@@ -257,7 +252,6 @@ export default function ReportsScreen() {
     return Object.values(map).sort((a, b) => b.total - a.total);
   })();
 
-  // ── Summary card totals — Completed orders only
   const completedOrders = displayOrders.filter(o => o.status === 'Completed');
 
   const totalRevenue  = completedOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
@@ -266,7 +260,6 @@ export default function ReportsScreen() {
   const codCount      = completedOrders.filter(o => normPayment(o.paymentType) === 'COD').length;
   const onlineCount   = completedOrders.filter(o => normPayment(o.paymentType) === 'ONLINE').length;
 
-  // ── Pie data
   const statusPieData = (() => {
     const delivered = displayOrders.filter(o => o.status === 'Completed').length;
     const cancelled = displayOrders.filter(o => o.status === 'Cancelled').length;
@@ -293,7 +286,7 @@ export default function ReportsScreen() {
       : displayOrders;
     let csv = 'Order No,Date,Time,Vendor,Subtotal,Tax,Total,Payment Type,Status\n';
     rows.forEach(o => {
-      csv += `${o.orderNo},${o.orderDate},${o.orderTime},"${o.vendorName}",${o.subTotal},${o.tax},${o.totalAmount},${normPayment(o.paymentType)},${o.status}\n`;
+      csv += `${o.orderNo},${o.deliveryDate},${o.orderTime},"${o.vendorName}",${o.subTotal},${o.tax},${o.totalAmount},${normPayment(o.paymentType)},${o.status}\n`;
     });
     const filename = vendorFilter
       ? `Report_${vendorFilter.replace(/\s+/g, '_')}_${filterType}.csv`
@@ -329,152 +322,152 @@ export default function ReportsScreen() {
 
       {/* ── TOP CONTROLS ── */}
       <View style={styles.controlsBar}>
-  <View style={styles.topRow}>
+        <View style={styles.topRow}>
 
-    <View style={styles.searchBox}>
-      <Ionicons name="search-outline" size={14} color="#94a3b8" />
-      <TextInput
-        style={styles.searchInput}
-        placeholder="Search vendor / order…"
-        placeholderTextColor="#94a3b8"
-        value={search}
-        onChangeText={setSearch}
-        returnKeyType="search"
-      />
-      {search.length > 0 && (
-        <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="close-circle" size={14} color="#94a3b8" />
-        </TouchableOpacity>
-      )}
-    </View>
-
-    {/* Period dropdown */}
-    <View style={styles.dropWrap}>
-      <TouchableOpacity
-        style={styles.dropBtn}
-        onPress={() => { setShowPeriodDrop(p => !p); setShowStatusDrop(false); }}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.dropBtnText}>{filterType}</Text>
-        <Ionicons name="chevron-down" size={12} color="#334155" />
-      </TouchableOpacity>
-      {showPeriodDrop && (
-        <View style={styles.dropMenu}>
-          {PERIOD_OPTIONS.map(p => (
-            <TouchableOpacity
-              key={p}
-              style={[styles.dropMenuItem, filterType === p && styles.dropMenuItemActive]}
-              onPress={() => handlePeriodSelect(p)}
-            >
-              <Text style={[styles.dropMenuText, filterType === p && styles.dropMenuTextActive]}>{p}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-    </View>
-
-    {/* ── Inline Custom date pickers — appear right after period dropdown ── */}
-    {filterType === 'Custom' && (
-      <>
-        <View style={styles.dateBtn}>
-          <Ionicons name="calendar-outline" size={13} color="#2563eb" />
-          <Text style={styles.dateBtnText}>From: </Text>
-          {Platform.OS === 'web' ? (
-            <input
-              type="date"
-              value={toISOLocal(startDate)}
-              onChange={e => {
-                if (e.target.value) {
-                  const [y, m, d] = e.target.value.split('-').map(Number);
-                  setStartDate(new Date(y, m - 1, d));
-                }
-              }}
-              style={{ border: 'none', outline: 'none', fontSize: 12, color: '#1d4ed8', fontWeight: '600', backgroundColor: 'transparent', cursor: 'pointer' }}
+          {/* Search */}
+          <View style={styles.searchBox}>
+            <Ionicons name="search-outline" size={14} color="#94a3b8" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search vendor / order…"
+              placeholderTextColor="#94a3b8"
+              value={search}
+              onChangeText={setSearch}
+              returnKeyType="search"
             />
-          ) : (
-            <>
-              <TouchableOpacity onPress={() => { setShowStart(true); setShowEnd(false); }}>
-                <Text style={styles.dateBtnText}>{fmtDate(startDate)}</Text>
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={14} color="#94a3b8" />
               </TouchableOpacity>
-              {showStart && (
-                <DateTimePicker value={startDate} mode="date"
-                  onChange={(_, d) => { if (d) setStartDate(d); setShowStart(false); }} />
-              )}
-            </>
-          )}
-        </View>
+            )}
+          </View>
 
-        <Text style={styles.dateArrow}>→</Text>
-
-        <View style={styles.dateBtn}>
-          <Ionicons name="calendar-outline" size={13} color="#2563eb" />
-          <Text style={styles.dateBtnText}>To: </Text>
-          {Platform.OS === 'web' ? (
-            <input
-              type="date"
-              value={toISOLocal(endDate)}
-              onChange={e => {
-                if (e.target.value) {
-                  const [y, m, d] = e.target.value.split('-').map(Number);
-                  setEndDate(new Date(y, m - 1, d));
-                }
-              }}
-              style={{ border: 'none', outline: 'none', fontSize: 12, color: '#1d4ed8', fontWeight: '600', backgroundColor: 'transparent', cursor: 'pointer' }}
-            />
-          ) : (
-            <>
-              <TouchableOpacity onPress={() => { setShowEnd(true); setShowStart(false); }}>
-                <Text style={styles.dateBtnText}>{fmtDate(endDate)}</Text>
-              </TouchableOpacity>
-              {showEnd && (
-                <DateTimePicker value={endDate} mode="date"
-                  onChange={(_, d) => { if (d) setEndDate(d); setShowEnd(false); }} />
-              )}
-            </>
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={styles.applyBtn}
-          onPress={() => applyFilter(orders, 'Custom', startDate, endDate)}
-        >
-          <Text style={styles.applyBtnText}>Apply</Text>
-        </TouchableOpacity>
-      </>
-    )}
-
-    {/* Status dropdown */}
-    <View style={styles.dropWrap}>
-      <TouchableOpacity
-        style={styles.dropBtn}
-        onPress={() => { setShowStatusDrop(s => !s); setShowPeriodDrop(false); }}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.dropBtnText}>{statusFilter}</Text>
-        <Ionicons name="chevron-down" size={12} color="#334155" />
-      </TouchableOpacity>
-      {showStatusDrop && (
-        <View style={styles.dropMenu}>
-          {STATUS_OPTIONS.map(s => (
+          {/* Period dropdown */}
+          <View style={styles.dropWrap}>
             <TouchableOpacity
-              key={s}
-              style={[styles.dropMenuItem, statusFilter === s && styles.dropMenuItemActive]}
-              onPress={() => { setStatusFilter(s); setShowStatusDrop(false); }}
+              style={styles.dropBtn}
+              onPress={() => { setShowPeriodDrop(p => !p); setShowStatusDrop(false); }}
+              activeOpacity={0.8}
             >
-              <Text style={[styles.dropMenuText, statusFilter === s && styles.dropMenuTextActive]}>{s}</Text>
+              <Text style={styles.dropBtnText}>{filterType}</Text>
+              <Ionicons name="chevron-down" size={12} color="#334155" />
             </TouchableOpacity>
-          ))}
-        </View>
-      )}
-    </View>
+            {showPeriodDrop && (
+              <View style={styles.dropMenu}>
+                {PERIOD_OPTIONS.map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.dropMenuItem, filterType === p && styles.dropMenuItemActive]}
+                    onPress={() => handlePeriodSelect(p)}
+                  >
+                    <Text style={[styles.dropMenuText, filterType === p && styles.dropMenuTextActive]}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
 
-    {/* Spacer pushes Export to far right */}
-    <View style={{ flex: 1 }} />
-    <TouchableOpacity style={styles.exportBtn} onPress={() => exportCSV()} activeOpacity={0.85}>
-      <Text style={styles.exportBtnText}>EXPORT</Text>
-    </TouchableOpacity>
-  </View>
-</View>
+          {/* Status dropdown */}
+          <View style={styles.dropWrap}>
+            <TouchableOpacity
+              style={styles.dropBtn}
+              onPress={() => { setShowStatusDrop(s => !s); setShowPeriodDrop(false); }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.dropBtnText}>{statusFilter}</Text>
+              <Ionicons name="chevron-down" size={12} color="#334155" />
+            </TouchableOpacity>
+            {showStatusDrop && (
+              <View style={styles.dropMenu}>
+                {STATUS_OPTIONS.map(s => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.dropMenuItem, statusFilter === s && styles.dropMenuItemActive]}
+                    onPress={() => { setStatusFilter(s); setShowStatusDrop(false); }}
+                  >
+                    <Text style={[styles.dropMenuText, statusFilter === s && styles.dropMenuTextActive]}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Spacer */}
+          <View style={{ flex: 1 }} />
+
+          {/* ── Custom date pickers — always visible, right before Export ── */}
+          <View style={styles.dateBtn}>
+            <Ionicons name="calendar-outline" size={13} color="#2563eb" />
+            <Text style={styles.dateBtnText}>From: </Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                value={toISOLocal(startDate)}
+                onChange={e => {
+                  if (e.target.value) {
+                    const [y, m, d] = e.target.value.split('-').map(Number);
+                    setStartDate(new Date(y, m - 1, d));
+                  }
+                }}
+                style={{ border: 'none', outline: 'none', fontSize: 12, color: '#1d4ed8', fontWeight: '600', backgroundColor: 'transparent', cursor: 'pointer' }}
+              />
+            ) : (
+              <>
+                <TouchableOpacity onPress={() => { setShowStart(true); setShowEnd(false); }}>
+                  <Text style={styles.dateBtnText}>{fmtDate(startDate)}</Text>
+                </TouchableOpacity>
+                {showStart && (
+                  <DateTimePicker value={startDate} mode="date"
+                    onChange={(_, d) => { if (d) setStartDate(d); setShowStart(false); }} />
+                )}
+              </>
+            )}
+          </View>
+
+          <Text style={styles.dateArrow}>→</Text>
+
+          <View style={styles.dateBtn}>
+            <Ionicons name="calendar-outline" size={13} color="#2563eb" />
+            <Text style={styles.dateBtnText}>To: </Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                value={toISOLocal(endDate)}
+                onChange={e => {
+                  if (e.target.value) {
+                    const [y, m, d] = e.target.value.split('-').map(Number);
+                    setEndDate(new Date(y, m - 1, d));
+                  }
+                }}
+                style={{ border: 'none', outline: 'none', fontSize: 12, color: '#1d4ed8', fontWeight: '600', backgroundColor: 'transparent', cursor: 'pointer' }}
+              />
+            ) : (
+              <>
+                <TouchableOpacity onPress={() => { setShowEnd(true); setShowStart(false); }}>
+                  <Text style={styles.dateBtnText}>{fmtDate(endDate)}</Text>
+                </TouchableOpacity>
+                {showEnd && (
+                  <DateTimePicker value={endDate} mode="date"
+                    onChange={(_, d) => { if (d) setEndDate(d); setShowEnd(false); }} />
+                )}
+              </>
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={styles.applyBtn}
+            onPress={() => applyFilter(orders, 'Custom', startDate, endDate)}
+          >
+            <Text style={styles.applyBtnText}>Apply</Text>
+          </TouchableOpacity>
+
+          {/* Export */}
+          <TouchableOpacity style={styles.exportBtn} onPress={() => exportCSV()} activeOpacity={0.85}>
+            <Text style={styles.exportBtnText}>EXPORT</Text>
+          </TouchableOpacity>
+
+        </View>
+      </View>
 
       <ScrollView
         style={styles.scroll}
@@ -635,12 +628,6 @@ const styles = StyleSheet.create({
   exportBtn: { backgroundColor: '#0f172a', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 8 },
   exportBtnText: { color: 'white', fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
 
-  customDateRow: {
-    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8,
-    backgroundColor: 'white', borderRadius: 8,
-    borderWidth: 1, borderColor: '#e2e8f0',
-    paddingVertical: 10, paddingHorizontal: 12, marginBottom: 8,
-  },
   dateBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     borderWidth: 1, borderColor: '#dbeafe', backgroundColor: '#eff6ff',
