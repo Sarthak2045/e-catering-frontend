@@ -1,542 +1,688 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, ActivityIndicator,
-  Platform, TouchableOpacity, TextInput, ScrollView
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Platform, Dimensions, ActivityIndicator, TextInput,
 } from 'react-native';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { Ionicons } from '@expo/vector-icons';
+import { collection, query, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { Ionicons } from '@expo/vector-icons';
+import Svg, { Path, Circle, Line, Text as SvgText, G } from 'react-native-svg';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Expandable Row — mirrors DashboardScreen's ExpandableOrderRow exactly
-// ─────────────────────────────────────────────────────────────────────────────
-const ExpandableOrderRow = ({ item }) => {
-  const [expanded, setExpanded] = useState(false);
+const PIE_COLORS = [
+  '#2563eb', '#22c55e', '#f59e0b', '#ef4444',
+  '#06b6d4', '#8b5cf6', '#f97316', '#64748b',
+  '#ec4899', '#14b8a6', '#eab308', '#a855f7',
+];
 
-  const isCancelled = item.status === 'Cancelled';
-  const isCompleted = item.status === 'Completed';
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  const badgeBg     = isCancelled ? '#fef2f2'  : isCompleted ? '#f0fdf4'  : '#fffbeb';
-  const badgeTxt    = isCancelled ? '#dc2626'  : isCompleted ? '#16a34a'  : '#b45309';
-  const badgeBorder = isCancelled ? '#fecaca'  : isCompleted ? '#bbf7d0'  : '#fde68a';
+const fmt = (n) =>
+  `₹ ${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
- const codTypes        = ['COD', 'CASH', 'CASH_ON_DELIVERY'];
- const isCOD           = codTypes.includes((item.paymentType || '').toUpperCase().replace(/\s+/g, '_'));
- const paymentColor    = isCOD ? '#b45309' : '#0f766e';
- const paymentLabel    = isCOD ? 'COD' : 'ONLINE';
- const amountToCollect = isCOD ? (item.totalAmount || 0) : 0;
+const clearTime = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
-  return (
-    <View style={styles.cardContainer}>
-      {/* ── Collapsed / summary row ── */}
-      <TouchableOpacity
-        style={[styles.tableRow, expanded && styles.tableRowExpanded]}
-        onPress={() => setExpanded(!expanded)}
-        activeOpacity={0.85}
-      >
-        {/* Chevron */}
-        <View style={{ width: 36, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={14}
-            color="#94a3b8"
-          />
-        </View>
+const fmtDate = (d) => d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-        {/* Status badge */}
-        <View style={{ flex: 0.8 }}>
-          <View style={[styles.badge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
-            <Text style={{ fontSize: 9, fontWeight: '700', color: badgeTxt, letterSpacing: 0.5 }}>
-              {item.status || 'ACTIVE'}
-            </Text>
-          </View>
-        </View>
+const COD_TYPES = ['COD', 'CASH', 'CASH_ON_DELIVERY'];
+const normPayment = (p) =>
+  COD_TYPES.includes((p || '').toUpperCase().replace(/\s+/g, '_')) ? 'COD' : 'ONLINE';
 
-        {/* Order No */}
-        <Text style={[styles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>
-          {item.orderNo}
-        </Text>
-
-        {/* Date */}
-        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>
-          {item.orderDate || '—'}
-        </Text>
-
-        {/* Time */}
-        <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>
-          {item.orderTime || '—'}
-        </Text>
-
-        {/* Vendor */}
-        <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>
-          {item.vendorName}
-        </Text>
-
-        {/* Train / Coach / Seat */}
-        <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={2}>
-          {item.trainInfo || 'N/A'}{' '}
-          <Text style={{ color: '#dc2626', fontWeight: '700' }}>
-            ({item.coach || 'No Coach'}{item.seat ? ` / ${item.seat}` : ''})
-          </Text>
-        </Text>
-
-        {/* Payment tag */}
-        <View style={{ flex: 0.9 }}>
-          <Text style={[styles.paymentTag, { color: paymentColor, borderColor: paymentColor }]}>
-             {paymentLabel}
-          </Text>
-        </View>
-
-        {/* Delivery executive (read-only indicator, no action buttons needed on history screens) */}
-        <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={[
-            styles.dotIndicator,
-            { backgroundColor: item.assignedExecutiveName ? '#16a34a' : '#cbd5e1' }
-          ]} />
-          <Text
-            style={[
-              styles.cell,
-              {
-                fontSize: 12,
-                fontWeight: '700',
-                flex: 1,
-                color: item.assignedExecutiveName ? '#16a34a' : '#94a3b8',
-              }
-            ]}
-            numberOfLines={1}
-          >
-            {item.assignedExecutiveName || 'Not Assigned'}
-          </Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* ── Expanded detail panel — identical to Dashboard's 3-column layout ── */}
-      {expanded && (
-        <View style={styles.expandedContent}>
-          <View style={styles.expandedLayout}>
-
-            {/* LEFT — Item list */}
-            <View style={styles.expandSectionLeft}>
-              <View style={styles.miniTableHeader}>
-                <Text style={[styles.miniHeadText, { flex: 1 }]}>ITEM NAME</Text>
-                <Text style={[styles.miniHeadText, { width: 56, textAlign: 'center' }]}>QTY</Text>
-              </View>
-              {item.items && item.items.map((prod, idx) => (
-                <View key={idx} style={styles.miniTableRow}>
-                  <Text style={[styles.miniCellText, { flex: 1 }]}>{prod.name}</Text>
-                  <Text style={[styles.miniCellText, { width: 56, textAlign: 'center', fontWeight: '700', color: '#0f172a' }]}>
-                    {prod.quantity}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            {/* MID — Customer details */}
-            <View style={styles.expandSectionMid}>
-              <Text style={styles.sectionLabel}>CUSTOMER DETAILS</Text>
-              <Text style={styles.remarkText}>{item.customerName}</Text>
-              <Text style={[styles.remarkText, { color: '#64748b' }]}>Mo: {item.contactNo}</Text>
-
-              {item.remark && item.remark.trim() !== '' && (
-                <View style={styles.remarkBox}>
-                  <Text style={styles.remarkAlertText}>⚠ SPECIAL INSTRUCTIONS</Text>
-                  <Text style={styles.remarkContentText}>{item.remark}</Text>
-                </View>
-              )}
-
-              {item.assignedExecutiveName && (
-                <View style={styles.assignedBadgeBox}>
-                  <Text style={styles.assignedBadgeLabel}>Delivered By:</Text>
-                  <Text style={styles.assignedBadgeName}>{item.assignedExecutiveName}</Text>
-                </View>
-              )}
-            </View>
-
-            {/* RIGHT — Billing summary */}
-            <View style={styles.expandSectionRight}>
-              <Text style={styles.sectionLabel}>BILLING SUMMARY</Text>
-              <View style={styles.financeRow}>
-                <Text style={styles.financeLabel}>Sub Total</Text>
-                <Text style={styles.financeValue}>₹ {item.subTotal || 0}</Text>
-              </View>
-              <View style={styles.financeRow}>
-                <Text style={styles.financeLabel}>Tax / GST</Text>
-                <Text style={styles.financeValue}>₹ {item.tax || 0}</Text>
-              </View>
-              <View style={styles.financeRow}>
-                <Text style={styles.financeLabel}>Delivery</Text>
-                <Text style={styles.financeValue}>₹ {item.deliveryCharge || 0}</Text>
-              </View>
-              <View style={styles.financeDivider} />
-              <View style={styles.financeRow}>
-                <Text style={[styles.financeLabel, { fontWeight: '700', color: '#0f172a' }]}>TOTAL BILL</Text>
-                <Text style={[styles.financeValue, { fontSize: 15, fontWeight: '800', color: '#0f172a' }]}>
-                  ₹ {item.totalAmount || 0}
-                </Text>
-              </View>
-
-              {isCOD && (
-                <View style={styles.amountToCollectBar}>
-                  <Text style={styles.atcLabel}>COLLECT CASH</Text>
-                  <Text style={styles.atcValue}>₹ {amountToCollect}</Text>
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
-      )}
-    </View>
-  );
+const parseDate = (str) => {
+  if (!str) return new Date(0);
+  const p = str.split('-');
+  if (p.length === 3 && p[0].length === 4)
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  if (p.length === 3 && p[2].length === 4)
+    return new Date(+p[2], +p[1] - 1, +p[0]);
+  return new Date(str);
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Screen
-// ─────────────────────────────────────────────────────────────────────────────
-export default function FilteredOrdersScreen({ statusFilter, title }) {
-  const [orders, setOrders]               = useState([]);
-  const [filteredOrders, setFilteredOrders] = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [searchQuery, setSearchQuery]     = useState('');
+// ─── Smart Pie Chart ─────────────────────────────────────────────────────────
+function CustomPieChart({ data, size, title }) {
+  if (!data || data.length === 0) return null;
 
-  useEffect(() => {
-    const q = query(collection(db, 'orders'), where('status', '==', statusFilter));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-      setOrders(list);
-      setFilteredOrders(list);
-      setLoading(false);
+  const total = data.reduce((s, d) => s + d.population, 0);
+  const maxLabelChars = Math.max(...data.map(d => d.name.length));
+  const labelPadding  = Math.max(maxLabelChars * 6.5, 60);
+  const svgWidth  = size + (labelPadding * 2) + 40;
+  const svgHeight = size + 40;
+  const cx = svgWidth / 2;
+  const cy = svgHeight / 2;
+  const r  = size * 0.26;
+
+  if (data.length === 1) {
+    return (
+      <View style={{ alignItems: 'center' }}>
+        {title && <Text style={styles.pieTitle}>{title}</Text>}
+        <Svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+          <Circle cx={cx} cy={cy} r={r} fill={data[0].color} />
+          <Line x1={cx} y1={cy + r} x2={cx} y2={cy + r + 25} stroke={data[0].color} strokeWidth="1.5" />
+          <Circle cx={cx} cy={cy + r} r="2.5" fill={data[0].color} />
+          <SvgText x={cx} y={cy + r + 40} fontSize="14" fontWeight="700" fill="#1e293b" textAnchor="middle">
+             {data[0].name} ({data[0].population})
+          </SvgText>
+        </Svg>
+      </View>
+    );
+  }
+
+  const rawSlices = [];
+  let startAngle = -Math.PI / 2;
+
+  data.forEach((item) => {
+    const angle    = (item.population / total) * 2 * Math.PI;
+    const endAngle = startAngle + angle;
+    const x1 = cx + r * Math.cos(startAngle);
+    const y1 = cy + r * Math.sin(startAngle);
+    const x2 = cx + r * Math.cos(endAngle);
+    const y2 = cy + r * Math.sin(endAngle);
+    const largeArc = angle > Math.PI ? 1 : 0;
+    const midAngle = startAngle + angle / 2;
+    const ax = cx + (r + 4)  * Math.cos(midAngle);
+    const ay = cy + (r + 4)  * Math.sin(midAngle);
+    const bx = cx + (r + 22) * Math.cos(midAngle);
+    const by = cy + (r + 22) * Math.sin(midAngle);
+
+    rawSlices.push({
+      path: `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`,
+      color: item.color,
+      midAngle, ax, ay, bx, by,
+      name: item.name,
+      count: item.population,
+      percent: ((item.population / total) * 100).toFixed(1),
+      isRight: Math.cos(midAngle) >= 0,
     });
-    return () => unsubscribe();
-  }, [statusFilter]);
+    startAngle = endAngle;
+  });
 
-  useEffect(() => {
-    if (!searchQuery.trim()) { setFilteredOrders(orders); return; }
-    const q = searchQuery.toLowerCase();
-    setFilteredOrders(orders.filter(o =>
-      (o.orderNo || '').toString().toLowerCase().includes(q) ||
-      (o.vendorName || '').toLowerCase().includes(q) ||
-      (o.customerName || '').toLowerCase().includes(q) ||
-      (o.trainInfo || '').toLowerCase().includes(q) ||
-      (o.assignedExecutiveName || '').toLowerCase().includes(q)
-    ));
-  }, [searchQuery, orders]);
+  const LABEL_HEIGHT = 32;
+  const distributeLabels = (slices, side) => {
+    const out = [];
+    slices.forEach((s, i) => {
+      let ly = s.by;
+      if (i > 0) { const prevY = out[i - 1].ly; if (ly - prevY < LABEL_HEIGHT) ly = prevY + LABEL_HEIGHT; }
+      const lx = side === 'right' ? cx + r + 35 : cx - r - 35;
+      out.push({ ...s, lx, ly, side });
+    });
+    return out;
+  };
 
-  if (loading) return (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#0f172a" />
-      <Text style={styles.loadingText}>Loading orders…</Text>
-    </View>
-  );
+  const finalRight = distributeLabels(rawSlices.filter(s =>  s.isRight).sort((a, b) => a.by - b.by), 'right');
+  const finalLeft  = distributeLabels(rawSlices.filter(s => !s.isRight).sort((a, b) => a.by - b.by), 'left');
+  const allLabeled = [...finalRight, ...finalLeft];
 
   return (
-    <View style={styles.container}>
-
-      {/* ── Top bar ── */}
-      <View style={styles.topBar}>
-        <View>
-          <Text style={styles.heading}>{title}</Text>
-          <View style={styles.countRow}>
-            <View style={[
-              styles.countDot,
-              {
-                backgroundColor:
-                  statusFilter === 'Completed' ? '#16a34a' :
-                  statusFilter === 'Cancelled' ? '#dc2626' : '#f59e0b'
-              }
-            ]} />
-            <Text style={styles.subHeading}>
-              {filteredOrders.length} {filteredOrders.length === 1 ? 'order' : 'orders'} found
-            </Text>
-          </View>
-        </View>
-
-        {/* Search */}
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={16} color="#94a3b8" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by order, vendor, train…"
-            placeholderTextColor="#94a3b8"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={16} color="#94a3b8" />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
-
-      {/* ── Table container ── */}
-      <View style={styles.tableContainer}>
-
-        {/* Table header — same columns as Dashboard */}
-        <View style={styles.tableHeader}>
-          <View style={{ width: 36 }} />
-          <Text style={[styles.col, { flex: 0.8 }]}>STATUS</Text>
-          <Text style={[styles.col, { flex: 1.1 }]}>ORDER NO.</Text>
-          <Text style={[styles.col, { flex: 1.0 }]}>DATE</Text>
-          <Text style={[styles.col, { flex: 0.8 }]}>TIME</Text>
-          <Text style={[styles.col, { flex: 1.2 }]}>VENDOR</Text>
-          <Text style={[styles.col, { flex: 1.2 }]}>TRAIN</Text>
-          <Text style={[styles.col, { flex: 0.9 }]}>PAYMENT</Text>
-          <Text style={[styles.col, { flex: 1.2 }]}>DELIVERY EXEC</Text>
-        </View>
-
-        {/* Rows */}
-        {filteredOrders.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="receipt-outline" size={36} color="#cbd5e1" />
-            <Text style={styles.emptyStateText}>
-              {searchQuery ? 'No orders match your search' : `No ${statusFilter.toLowerCase()} orders`}
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredOrders}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => <ExpandableOrderRow item={item} />}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 50, flexGrow: 1 }}
-            showsVerticalScrollIndicator={false}
-          />
-        )}
-      </View>
+    <View style={{ alignItems: 'center' }}>
+      {title && <Text style={styles.pieTitle}>{title}</Text>}
+      <Svg width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+        {rawSlices.map((s, i) => (
+          <Path key={`slice-${i}`} d={s.path} fill={s.color} stroke="white" strokeWidth="1" />
+        ))}
+        {allLabeled.map((s, i) => {
+          const textAnchor = s.side === 'right' ? 'start' : 'end';
+          const textX      = s.side === 'right' ? s.lx + 4 : s.lx - 4;
+          return (
+            <G key={`lbl-${i}`}>
+              <Line x1={s.ax} y1={s.ay} x2={s.bx} y2={s.by} stroke={s.color} strokeWidth="1.3" />
+              <Line x1={s.bx} y1={s.by} x2={s.lx} y2={s.ly} stroke={s.color} strokeWidth="1.3" />
+              <Circle cx={s.ax} cy={s.ay} r="2" fill={s.color} />
+              <Circle cx={s.lx} cy={s.ly} r="2" fill={s.color} />
+              <SvgText x={textX} y={s.ly - 2}  fontSize="13" fontWeight="700" fill="#1e293b" textAnchor={textAnchor}>{s.name}</SvgText>
+              <SvgText x={textX} y={s.ly + 13} fontSize="11" fontWeight="500" fill="#64748b" textAnchor={textAnchor}>{s.count} ({s.percent}%)</SvgText>
+            </G>
+          );
+        })}
+      </Svg>
     </View>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Styles — mirrors DashboardScreen's stylesheet 1-to-1
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Summary Card ────────────────────────────────────────────────────────────
+const SummaryCard = ({ title, subtitle, color = '#16a34a' }) => (
+  <View style={[styles.summaryCard, { backgroundColor: color, shadowColor: color }]}>
+    <Text style={styles.summaryTitle}>{title}</Text>
+    <Text style={styles.summarySubtitle}>{subtitle}</Text>
+  </View>
+);
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
+export default function ReportsScreen() {
+  const [orders, setOrders]           = useState([]);
+  const [filteredOrders, setFiltered] = useState([]);
+  const [filterType, setFilterType]   = useState('Today');
+  const [loading, setLoading]         = useState(true);
+
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate]     = useState(new Date());
+  const [showStart, setShowStart] = useState(false);
+  const [showEnd, setShowEnd]     = useState(false);
+
+  const [showPeriodDrop, setShowPeriodDrop] = useState(false);
+  const [showStatusDrop, setShowStatusDrop] = useState(false);
+  const [paymentMode]                       = useState('All');
+  const [statusFilter, setStatusFilter]     = useState('All');
+  const [search, setSearch]                 = useState('');
+
+  const PERIOD_OPTIONS = ['Today', 'Week', 'Month', 'Custom'];
+  const STATUS_OPTIONS = ['All', 'Completed', 'Cancelled'];
+
+  useEffect(() => {
+    const q = query(collection(db, 'orders'));
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      data.sort((a, b) => parseDate(b.deliveryDate) - parseDate(a.deliveryDate));
+      setOrders(data);
+      applyFilter(data, 'Today', new Date(), new Date());
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  const applyFilter = (data, type, sd, ed) => {
+    const today = clearTime(new Date());
+    let result  = [];
+    if (type === 'Today') {
+      result = data.filter(o =>
+        clearTime(parseDate(o.deliveryDate)).getTime() === today.getTime()
+      );
+    } else if (type === 'Week') {
+      const from = new Date(today); from.setDate(today.getDate() - 7);
+      result = data.filter(o => parseDate(o.deliveryDate) >= from);
+    } else if (type === 'Month') {
+      const from = new Date(today); from.setDate(today.getDate() - 30);
+      result = data.filter(o => parseDate(o.deliveryDate) >= from);
+    } else if (type === 'Custom') {
+      const from = clearTime(sd);
+      const to   = new Date(clearTime(ed)); to.setDate(to.getDate() + 1);
+      result = data.filter(o => {
+        const d = parseDate(o.deliveryDate);
+        return d >= from && d < to;
+      });
+    }
+    setFiltered(result);
+    setFilterType(type);
+  };
+
+  const handlePeriodSelect = (type) => {
+    setShowPeriodDrop(false);
+    if (type !== 'Custom') applyFilter(orders, type, startDate, endDate);
+    else setFilterType('Custom');
+  };
+
+  const displayOrders = filteredOrders.filter(o => {
+    const q = search.toLowerCase();
+    const matchMode = paymentMode === 'All' || normPayment(o.paymentType) === paymentMode;
+
+    let matchStatus = false;
+    if (statusFilter === 'All')       matchStatus = o.status === 'Completed' || o.status === 'Cancelled';
+    if (statusFilter === 'Completed') matchStatus = o.status === 'Completed';
+    if (statusFilter === 'Cancelled') matchStatus = o.status === 'Cancelled';
+
+    const matchSearch = !q ||
+      (o.vendorName || '').toLowerCase().includes(q) ||
+      (o.orderNo    || '').toLowerCase().includes(q);
+
+    return matchMode && matchStatus && matchSearch;
+  });
+
+  const vendorSummary = (() => {
+    const map = {};
+    displayOrders.forEach(o => {
+      const v = o.vendorName || 'Unknown';
+      if (!map[v]) map[v] = {
+        vendorName: v,
+        delivered: 0, cancelled: 0,
+        total: 0, cod: 0, codCount: 0,
+        online: 0, onlineCount: 0, totalCount: 0,
+      };
+
+      if (o.status === 'Cancelled') { map[v].cancelled++; return; }
+
+      map[v].delivered++;
+      const pm  = normPayment(o.paymentType);
+      const amt = o.totalAmount || 0;
+      map[v].total      += amt;
+      map[v].totalCount++;
+      if (pm === 'COD')    { map[v].cod    += amt; map[v].codCount++;    }
+      if (pm === 'ONLINE') { map[v].online += amt; map[v].onlineCount++; }
+    });
+    return Object.values(map).sort((a, b) => b.total - a.total);
+  })();
+
+  const completedOrders = displayOrders.filter(o => o.status === 'Completed');
+
+  const totalRevenue  = completedOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+  const codRevenue    = completedOrders.filter(o => normPayment(o.paymentType) === 'COD').reduce((s, o) => s + (o.totalAmount || 0), 0);
+  const onlineRevenue = completedOrders.filter(o => normPayment(o.paymentType) === 'ONLINE').reduce((s, o) => s + (o.totalAmount || 0), 0);
+  const codCount      = completedOrders.filter(o => normPayment(o.paymentType) === 'COD').length;
+  const onlineCount   = completedOrders.filter(o => normPayment(o.paymentType) === 'ONLINE').length;
+
+  const statusPieData = (() => {
+    const delivered = displayOrders.filter(o => o.status === 'Completed').length;
+    const cancelled = displayOrders.filter(o => o.status === 'Cancelled').length;
+    const out = [];
+    if (delivered > 0) out.push({ name: 'Delivered', population: delivered, color: '#22c55e' });
+    if (cancelled > 0) out.push({ name: 'Cancelled', population: cancelled, color: '#ef4444' });
+    return out;
+  })();
+
+  const vendorPieData = (() => {
+    const counts = {};
+    completedOrders.forEach(o => {
+      const v = o.vendorName || 'Unknown';
+      counts[v] = (counts[v] || 0) + 1;
+    });
+    return Object.keys(counts)
+      .map((key, i) => ({ name: key, population: counts[key], color: PIE_COLORS[i % PIE_COLORS.length] }))
+      .sort((a, b) => b.population - a.population);
+  })();
+
+  const exportCSV = async (vendorFilter = null) => {
+    const rows = vendorFilter
+      ? displayOrders.filter(o => o.vendorName === vendorFilter)
+      : displayOrders;
+    let csv = 'Order No,Date,Time,Vendor,Subtotal,Tax,Total,Payment Type,Status\n';
+    rows.forEach(o => {
+      csv += `${o.orderNo},${o.deliveryDate},${o.orderTime},"${o.vendorName}",${o.subTotal},${o.tax},${o.totalAmount},${normPayment(o.paymentType)},${o.status}\n`;
+    });
+    const filename = vendorFilter
+      ? `Report_${vendorFilter.replace(/\s+/g, '_')}_${filterType}.csv`
+      : `Reports_${filterType}.csv`;
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+    } else {
+      const uri = FileSystem.documentDirectory + filename;
+      await FileSystem.writeAsStringAsync(uri, csv);
+      await Sharing.shareAsync(uri);
+    }
+  };
+
+  const sw     = Dimensions.get('window').width;
+  const PIE_SZ = Math.min(Math.floor((sw - 100) / 3.5), 240);
+
+  const toISOLocal = (d) => {
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
+  if (loading) return (
+    <View style={styles.loadingScreen}>
+      <ActivityIndicator size="large" color="#2563eb" />
+    </View>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#eef2f7' }}>
+
+      {/* ── TOP CONTROLS ── */}
+      <View style={styles.controlsBar}>
+        <View style={styles.topRow}>
+
+          {/* Search */}
+          <View style={styles.searchBox}>
+            <Ionicons name="search-outline" size={14} color="#94a3b8" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search vendor / order…"
+              placeholderTextColor="#94a3b8"
+              value={search}
+              onChangeText={setSearch}
+              returnKeyType="search"
+            />
+            {search.length > 0 && (
+              <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={14} color="#94a3b8" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Period dropdown */}
+          <View style={styles.dropWrap}>
+            <TouchableOpacity
+              style={styles.dropBtn}
+              onPress={() => { setShowPeriodDrop(p => !p); setShowStatusDrop(false); }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.dropBtnText}>{filterType}</Text>
+              <Ionicons name="chevron-down" size={12} color="#334155" />
+            </TouchableOpacity>
+            {showPeriodDrop && (
+              <View style={styles.dropMenu}>
+                {PERIOD_OPTIONS.map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.dropMenuItem, filterType === p && styles.dropMenuItemActive]}
+                    onPress={() => handlePeriodSelect(p)}
+                  >
+                    <Text style={[styles.dropMenuText, filterType === p && styles.dropMenuTextActive]}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Status dropdown */}
+          <View style={styles.dropWrap}>
+            <TouchableOpacity
+              style={styles.dropBtn}
+              onPress={() => { setShowStatusDrop(s => !s); setShowPeriodDrop(false); }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.dropBtnText}>{statusFilter}</Text>
+              <Ionicons name="chevron-down" size={12} color="#334155" />
+            </TouchableOpacity>
+            {showStatusDrop && (
+              <View style={styles.dropMenu}>
+                {STATUS_OPTIONS.map(s => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.dropMenuItem, statusFilter === s && styles.dropMenuItemActive]}
+                    onPress={() => { setStatusFilter(s); setShowStatusDrop(false); }}
+                  >
+                    <Text style={[styles.dropMenuText, statusFilter === s && styles.dropMenuTextActive]}>{s}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Spacer */}
+          <View style={{ flex: 1 }} />
+
+          {/* ── Custom date pickers — always visible, right before Export ── */}
+          <View style={styles.dateBtn}>
+            <Ionicons name="calendar-outline" size={13} color="#2563eb" />
+            <Text style={styles.dateBtnText}>From: </Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                value={toISOLocal(startDate)}
+                onChange={e => {
+                  if (e.target.value) {
+                    const [y, m, d] = e.target.value.split('-').map(Number);
+                    setStartDate(new Date(y, m - 1, d));
+                  }
+                }}
+                style={{ border: 'none', outline: 'none', fontSize: 12, color: '#1d4ed8', fontWeight: '600', backgroundColor: 'transparent', cursor: 'pointer' }}
+              />
+            ) : (
+              <>
+                <TouchableOpacity onPress={() => { setShowStart(true); setShowEnd(false); }}>
+                  <Text style={styles.dateBtnText}>{fmtDate(startDate)}</Text>
+                </TouchableOpacity>
+                {showStart && (
+                  <DateTimePicker value={startDate} mode="date"
+                    onChange={(_, d) => { if (d) setStartDate(d); setShowStart(false); }} />
+                )}
+              </>
+            )}
+          </View>
+
+          <Text style={styles.dateArrow}>→</Text>
+
+          <View style={styles.dateBtn}>
+            <Ionicons name="calendar-outline" size={13} color="#2563eb" />
+            <Text style={styles.dateBtnText}>To: </Text>
+            {Platform.OS === 'web' ? (
+              <input
+                type="date"
+                value={toISOLocal(endDate)}
+                onChange={e => {
+                  if (e.target.value) {
+                    const [y, m, d] = e.target.value.split('-').map(Number);
+                    setEndDate(new Date(y, m - 1, d));
+                  }
+                }}
+                style={{ border: 'none', outline: 'none', fontSize: 12, color: '#1d4ed8', fontWeight: '600', backgroundColor: 'transparent', cursor: 'pointer' }}
+              />
+            ) : (
+              <>
+                <TouchableOpacity onPress={() => { setShowEnd(true); setShowStart(false); }}>
+                  <Text style={styles.dateBtnText}>{fmtDate(endDate)}</Text>
+                </TouchableOpacity>
+                {showEnd && (
+                  <DateTimePicker value={endDate} mode="date"
+                    onChange={(_, d) => { if (d) setEndDate(d); setShowEnd(false); }} />
+                )}
+              </>
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={styles.applyBtn}
+            onPress={() => applyFilter(orders, 'Custom', startDate, endDate)}
+          >
+            <Text style={styles.applyBtnText}>Apply</Text>
+          </TouchableOpacity>
+
+          {/* Export */}
+          <TouchableOpacity style={styles.exportBtn} onPress={() => exportCSV()} activeOpacity={0.85}>
+            <Text style={styles.exportBtnText}>EXPORT</Text>
+          </TouchableOpacity>
+
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={{ padding: 14, paddingBottom: 100 }}
+        keyboardShouldPersistTaps="handled"
+      >
+
+        {/* ── CHART CARD ── */}
+        <View style={styles.chartCard}>
+          <View style={styles.chartRow}>
+            <View style={styles.piesSection}>
+              <View style={styles.pieBlock}>
+                {statusPieData.length > 0 ? (
+                  <CustomPieChart data={statusPieData} size={PIE_SZ} title="Order Status" />
+                ) : (
+                  <View style={[styles.emptyPie, { width: PIE_SZ, height: PIE_SZ }]}>
+                    <Ionicons name="pie-chart-outline" size={40} color="#cbd5e1" />
+                    <Text style={styles.emptyTxt}>No data</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.pieBlock}>
+                {vendorPieData.length > 0 ? (
+                  <CustomPieChart data={vendorPieData} size={PIE_SZ} title="Vendor Share" />
+                ) : (
+                  <View style={[styles.emptyPie, { width: PIE_SZ, height: PIE_SZ }]}>
+                    <Ionicons name="pie-chart-outline" size={40} color="#cbd5e1" />
+                    <Text style={styles.emptyTxt}>No data</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.summaryColumn}>
+              <SummaryCard
+                title={`Total : ${fmt(totalRevenue)}`}
+                subtitle={`Orders : ${completedOrders.length}`}
+                color="#16a34a"
+              />
+              <SummaryCard
+                title={`COD : ${fmt(codRevenue)}`}
+                subtitle={`Orders : ${codCount}`}
+                color="#0891b2"
+              />
+              <SummaryCard
+                title={`Online : ${fmt(onlineRevenue)}`}
+                subtitle={`Orders : ${onlineCount}`}
+                color="#7c3aed"
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* ── VENDOR TABLE ── */}
+        <View style={styles.tableCard}>
+          <View style={styles.tableHead}>
+            {[
+              { label: 'No',        f: 0.4 },
+              { label: 'Vendor',    f: 1.8 },
+              { label: 'Delivered', f: 0.8 },
+              { label: 'Cancelled', f: 0.8 },
+              { label: 'Total',     f: 1.4 },
+              { label: 'COD',       f: 1.4 },
+              { label: 'Online',    f: 1.4 },
+              { label: 'Actions',   f: 0.6 },
+            ].map(({ label, f }) => (
+              <Text key={label} style={[styles.th, { flex: f }]}>{label}</Text>
+            ))}
+          </View>
+
+          {vendorSummary.length === 0 ? (
+            <View style={styles.tableEmpty}>
+              <Ionicons name="receipt-outline" size={32} color="#cbd5e1" />
+              <Text style={styles.emptyTxt}>No orders found</Text>
+            </View>
+          ) : (
+            vendorSummary.map((v, i) => (
+              <View key={v.vendorName} style={[styles.tableRow, i % 2 === 0 && styles.tableRowAlt]}>
+                <Text style={[styles.td, { flex: 0.4, color: '#94a3b8' }]}>{i + 1}</Text>
+                <Text style={[styles.td, { flex: 1.8, fontWeight: '600', color: '#1e293b' }]}>{v.vendorName}</Text>
+                <Text style={[styles.td, { flex: 0.8, color: '#16a34a', fontWeight: '700' }]}>{v.delivered}</Text>
+                <Text style={[styles.td, { flex: 0.8, color: v.cancelled > 0 ? '#dc2626' : '#94a3b8', fontWeight: '700' }]}>{v.cancelled}</Text>
+
+                <View style={{ flex: 1.4 }}>
+                  <Text style={styles.tdAmt}>{fmt(v.total)}</Text>
+                  <Text style={styles.tdCnt}>({v.totalCount} orders)</Text>
+                </View>
+
+                <View style={{ flex: 1.4 }}>
+                  <Text style={[styles.tdAmt, { color: '#0891b2' }]}>{fmt(v.cod)}</Text>
+                  <Text style={styles.tdCnt}>({v.codCount} orders)</Text>
+                </View>
+
+                <View style={{ flex: 1.4 }}>
+                  <Text style={[styles.tdAmt, { color: '#7c3aed' }]}>{fmt(v.online)}</Text>
+                  <Text style={styles.tdCnt}>({v.onlineCount} orders)</Text>
+                </View>
+
+                <View style={{ flex: 0.6, alignItems: 'center' }}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => exportCSV(v.vendorName)} activeOpacity={0.8}>
+                    <Ionicons name="arrow-redo" size={13} color="white" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+
+      {(showPeriodDrop || showStatusDrop) && (
+        <TouchableOpacity
+          style={StyleSheet.absoluteFillObject}
+          onPress={() => { setShowPeriodDrop(false); setShowStatusDrop(false); }}
+          activeOpacity={1}
+          pointerEvents="box-only"
+        />
+      )}
+    </View>
+  );
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-    padding: 24,
-    height: Platform.OS === 'web' ? '100vh' : '100%',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    gap: 12,
-  },
-  loadingText: { color: '#64748b', fontSize: 13, fontWeight: '600' },
+  loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#eef2f7' },
 
-  // Top bar
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  heading: { fontSize: 22, fontWeight: '800', color: '#0f172a', letterSpacing: -0.5 },
-  countRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
-  countDot: { width: 7, height: 7, borderRadius: 4 },
-  subHeading: { fontSize: 13, color: '#64748b', fontWeight: '500' },
+  controlsBar: { backgroundColor: '#eef2f7', paddingHorizontal: 14, paddingTop: 14, paddingBottom: 4, zIndex: 100 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
 
-  // Search bar
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    minWidth: 280,
-    gap: 8,
+  searchBox: {
+    flex: 0.7, minWidth: 110, maxWidth: 260,
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: 'white', borderRadius: 8,
+    borderWidth: 1, borderColor: '#e2e8f0',
+    paddingVertical: 9, paddingHorizontal: 11,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 13,
-    color: '#0f172a',
-    outlineStyle: 'none',
-  },
+  searchInput: { flex: 1, fontSize: 13, color: '#1e293b', padding: 0, margin: 0, outlineStyle: 'none' },
 
-  // Table wrapper
-  tableContainer: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    overflow: 'hidden',
+  dropWrap: { zIndex: 200 },
+  dropBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'white', borderRadius: 8,
+    borderWidth: 1, borderColor: '#e2e8f0',
+    paddingVertical: 9, paddingHorizontal: 13,
   },
-  tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#0f172a',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
-    alignItems: 'center',
+  dropBtnText: { fontSize: 13, fontWeight: '600', color: '#1e293b' },
+  dropMenu: {
+    position: 'absolute', top: 42, left: 0,
+    backgroundColor: 'white', borderRadius: 8,
+    borderWidth: 1, borderColor: '#e2e8f0',
+    shadowColor: '#000', shadowOpacity: 0.12,
+    shadowRadius: 12, elevation: 20, minWidth: 120, zIndex: 9999,
   },
-  col: { fontSize: 10, fontWeight: '700', color: '#ffffff', letterSpacing: 0.8 },
+  dropMenuItem: { paddingVertical: 11, paddingHorizontal: 16 },
+  dropMenuItemActive: { backgroundColor: '#eff6ff' },
+  dropMenuText: { fontSize: 13, color: '#475569', fontWeight: '500' },
+  dropMenuTextActive: { color: '#2563eb', fontWeight: '700' },
 
-  // Card / row
-  cardContainer: { borderBottomWidth: 1, borderColor: '#f1f5f9' },
+  exportBtn: { backgroundColor: '#0f172a', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 8 },
+  exportBtnText: { color: 'white', fontWeight: '800', fontSize: 13, letterSpacing: 0.5 },
+
+  dateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    borderWidth: 1, borderColor: '#dbeafe', backgroundColor: '#eff6ff',
+    paddingVertical: 7, paddingHorizontal: 10, borderRadius: 6,
+  },
+  dateBtnText:  { fontSize: 12, color: '#1d4ed8', fontWeight: '600' },
+  dateArrow:    { color: '#94a3b8', fontWeight: '700', fontSize: 16 },
+  applyBtn:     { backgroundColor: '#2563eb', paddingVertical: 7, paddingHorizontal: 16, borderRadius: 6 },
+  applyBtnText: { color: 'white', fontWeight: '700', fontSize: 13 },
+
+  scroll: { flex: 1 },
+
+  chartCard: {
+    backgroundColor: 'white', borderRadius: 12,
+    borderWidth: 1, borderColor: '#e2e8f0',
+    padding: 16, marginBottom: 14,
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
+  },
+  chartRow: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', flexWrap: 'wrap', gap: 16,
+  },
+  piesSection: {
+    flex: 2.5, flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'space-around',
+    minWidth: 500, gap: 10,
+  },
+  pieBlock:        { alignItems: 'center', justifyContent: 'center' },
+  pieTitle:        { fontSize: 12, fontWeight: '700', color: '#334155', marginBottom: 6, letterSpacing: 0.3 },
+  emptyPie:        { alignItems: 'center', justifyContent: 'center', gap: 8 },
+  emptyTxt:        { fontSize: 12, color: '#94a3b8' },
+
+  summaryColumn:   { flex: 0.8, flexDirection: 'column', gap: 8, minWidth: 180, maxWidth: 220 },
+  summaryCard:     { borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2 },
+  summaryTitle:    { fontSize: 12, fontWeight: '700', color: 'white', marginBottom: 2 },
+  summarySubtitle: { fontSize: 11, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
+
+  tableCard: {
+    backgroundColor: 'white', borderRadius: 12,
+    borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
+  },
+  tableHead: { flexDirection: 'row', backgroundColor: '#0f172a', paddingVertical: 12, paddingHorizontal: 10 },
+  th: { fontSize: 10, fontWeight: '700', color: 'white', letterSpacing: 0.3, textAlign: 'left' },
   tableRow: {
-    flexDirection: 'row',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    backgroundColor: 'white',
+    flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 10,
+    borderBottomWidth: 1, borderColor: '#f1f5f9', alignItems: 'center',
   },
-  tableRowExpanded: { backgroundColor: '#f8fafc' },
-  cell: { fontSize: 13, color: '#334155', fontWeight: '700'},
-
-  // Badges & tags
-  badge: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 4,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
+  tableRowAlt: { backgroundColor: '#f8fafc' },
+  td:          { fontSize: 12, color: '#475569' },
+  tdAmt:       { fontSize: 11.5, color: '#1e293b', fontWeight: '700' },
+  tdCnt:       { fontSize: 10, color: '#94a3b8', marginTop: 2 },
+  tableEmpty:  { paddingVertical: 44, alignItems: 'center', gap: 10 },
+  actionBtn: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center',
   },
-  paymentTag: {
-    fontSize: 10,
-    fontWeight: '700',
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    alignSelf: 'flex-start',
-    letterSpacing: 0.5,
-  },
-  dotIndicator: { width: 8, height: 8, borderRadius: 4 },
-
-  // Empty state
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-  },
-  emptyStateText: { fontSize: 14, color: '#94a3b8' },
-
-  // ── Expanded content ──
-  expandedContent: {
-    backgroundColor: '#f8fafc',
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-  },
-  expandedLayout: { flexDirection: 'row', gap: 16 },
-
-  // LEFT section — items
-  expandSectionLeft: {
-    flex: 1.5,
-    backgroundColor: 'white',
-    borderRadius: 6,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  miniTableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#f8fafc',
-    padding: 8,
-    borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  miniHeadText: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.6 },
-  miniTableRow: {
-    flexDirection: 'row',
-    padding: 9,
-    borderBottomWidth: 1,
-    borderColor: '#f1f5f9',
-  },
-  miniCellText: { fontSize: 13, color: '#334155' },
-
-  // MID section — customer
-  expandSectionMid: {
-    flex: 1,
-    padding: 12,
-    backgroundColor: 'white',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94a3b8',
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-  remarkText: { fontSize: 13, color: '#0f172a', fontWeight: '500', marginBottom: 3 },
-  remarkBox: {
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: '#fffbeb',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#fde68a',
-  },
-  remarkAlertText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#b45309',
-    marginBottom: 3,
-    letterSpacing: 0.5,
-  },
-  remarkContentText: {
-    fontSize: 12,
-    color: '#92400e',
-    fontWeight: '600',
-    lineHeight: 16,
-  },
-  assignedBadgeBox: {
-    marginTop: 12,
-    padding: 10,
-    backgroundColor: '#f0fdf4',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
-  },
-  assignedBadgeLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#16a34a',
-    marginBottom: 2,
-    letterSpacing: 0.5,
-  },
-  assignedBadgeName: { fontSize: 13, fontWeight: '700', color: '#14532d' },
-
-  // RIGHT section — billing
-  expandSectionRight: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 12,
-  },
-  financeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  financeLabel: { fontSize: 12, color: '#64748b' },
-  financeValue: { fontSize: 13, fontWeight: '600', color: '#0f172a' },
-  financeDivider: { height: 1, backgroundColor: '#e2e8f0', marginVertical: 8 },
-  amountToCollectBar: {
-    backgroundColor: '#0f172a',
-    padding: 10,
-    borderRadius: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  atcLabel: { color: '#94a3b8', fontWeight: '700', fontSize: 10, letterSpacing: 0.8 },
-  atcValue: { color: 'white', fontWeight: '800', fontSize: 15 },
 });
