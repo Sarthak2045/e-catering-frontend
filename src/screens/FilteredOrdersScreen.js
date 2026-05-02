@@ -58,15 +58,8 @@ const ExpandableOrderRow = ({ item }) => {
         </Text>
 
         {/* Date */}
-        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>
-          {item.orderDate || '—'}
-        </Text>
-
-        {/* Time */}
-        <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>
-          {item.orderTime || '—'}
-        </Text>
-
+       <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.deliveryDate || '—'}</Text>
+        <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.deliveryTime || '—'}</Text>
         {/* Vendor */}
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>
           {item.vendorName}
