@@ -289,23 +289,30 @@ export default function DashboardScreen() {
              font-weight: inherit;
           }
         body {
-             font-family: 'Courier New', Courier, monospace;
-             width: 80mm;
-             margin: 0 auto;
-             padding: 10px 6px 16px 10px;
-             font-size: 11px;
-             color: #000;
-             font-weight: 900;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
+  font-family: 'Courier New', monospace;
+
+  width: 70mm;        /* 🔥 EXACT printable width */
+  margin: 0;
+  padding: 6px;   /* 🔥 balanced margin */
+
+  font-size: 11px;
+  line-height: 1.4;
+
+  color: #000;
+  font-weight: 600;
+
+  box-sizing: border-box;
+
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
         .center { text-align: center; }
         .bold { font-weight: bold; }
         .divider { border: none; border-top: 1px dashed #000; margin: 7px 0; }
-        .detail-table { width: 100%; border-collapse: collapse; }
-        .detail-table tr td { padding: 1px 0; vertical-align: top; }
-        .detail-table tr td:first-child { white-space: nowrap; padding-right: 4px;  width: 95px; }
-        .detail-table tr td:last-child { text-align: right; max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+        .detail-table { width: 100%; border-collapse: collapse;  table-layout: fixed; }
+        .detail-table tr td { padding: 1px 0; vertical-align: top;   font-size: 11px; }
+        .detail-table tr td:first-child { width: 42%; white-space: nowrap; padding-right: 4px;  }
+        .detail-table tr td:last-child {  width: 58%; text-align: left; word-break: break-word; overflow-wrap: break-word;}
         .items-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
         .items-head th {
           font-weight: bold;
@@ -374,7 +381,7 @@ export default function DashboardScreen() {
         <tr><td>Vendor</td><td>${order.vendorName || 'N/A'}</td></tr>
         
         <!-- 🟢 CHANGED: Prints Delivery Date and Time on Receipt -->
-        <tr><td>Delivery Date</td><td>${order.deliveryDate || new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</td></tr>
+        <tr><td>Delivery Date</td><td>${order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }): '—'}</td></tr>
         <tr><td>Delivery Time</td><td>${order.deliveryTime || new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })}</td></tr>
         
         <tr><td>Customer Name</td><td>${order.customerName || 'Customer'}</td></tr>
