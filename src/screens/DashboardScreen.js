@@ -30,7 +30,7 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
   const isCOD = codTypes.includes((item.paymentType || '').toUpperCase().replace(/\s+/g, '_'));
   const paymentColor = isCOD ? '#b45309' : '#0f766e';
   const paymentLabel = isCOD ? 'COD' : 'ONLINE';
-  const amountToCollect = isCOD ? (item.totalAmount || 0) : 0;  // ← ADD THIS
+  const amountToCollect = isCOD ? (item.totalAmount || 0) : 0;
 
   const handleAssignPress = () => {
     assignBtnRef.current?.measure((fx, fy, width, height, px, py) => {
@@ -58,8 +58,11 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
         </View>
 
         <Text style={[styles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>{item.orderNo}</Text>
-        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.orderDate || '—'}</Text>
-        <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.orderTime || '—'}</Text>
+        
+        {/* 🟢 CHANGED: Now pulls deliveryDate and deliveryTime */}
+        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.deliveryDate || '—'}</Text>
+        <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.deliveryTime || '—'}</Text>
+        
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>{item.vendorName}</Text>
 
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={2}>
@@ -72,8 +75,6 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
         </View>
 
         <View style={{ flex: 1.2, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
-
-          {/* Assign Executive button */}
           <View style={{ position: 'relative' }}>
             <TouchableOpacity
               ref={assignBtnRef}
@@ -89,12 +90,10 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
             )}
           </View>
 
-          {/* Edit Status button */}
           <TouchableOpacity ref={statusBtnRef} style={styles.iconBtn} onPress={handleStatusPress}>
             <Ionicons name="create-outline" size={16} color="#475569" />
           </TouchableOpacity>
 
-          {/* Print button */}
           <View style={{ position: 'relative' }}>
             <TouchableOpacity
               style={styles.iconBtn}
@@ -271,7 +270,6 @@ export default function DashboardScreen() {
         ? `<tr><td style="padding: 3px 0;">Remarks</td><td style="text-align:right; padding: 3px 0;">${order.remark}</td></tr>`
         : '';
 
-      // Train number and coach/seat for the bottom box
       const trainNo = (order.trainInfo || 'N/A');
       const coachSeat = `${order.coach || '-'}/${order.seat || '-'}`;
 
@@ -300,14 +298,10 @@ export default function DashboardScreen() {
         .center { text-align: center; }
         .bold { font-weight: bold; }
         .divider { border: none; border-top: 1px dashed #000; margin: 7px 0; }
-
-        /* ── Order Detail Table ── */
         .detail-table { width: 100%; border-collapse: collapse; }
         .detail-table tr td { padding: 2px 0; vertical-align: top; }
         .detail-table tr td:first-child { white-space: nowrap; padding-right: 8px; }
         .detail-table tr td:last-child { text-align: right; word-break: break-word; }
-
-        /* ── Items Table ── */
         .items-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
         .items-head th {
           font-weight: bold;
@@ -320,8 +314,6 @@ export default function DashboardScreen() {
         .items-head th:last-child { text-align: right; width: 36px; }
         .items-table tbody tr td { padding: 3px 2px; vertical-align: top; font-size: 12px; }
         .items-table tbody tr td:last-child { text-align: right; width: 36px; }
-
-        /* ── Totals Table ── */
         .totals-table { width: 100%; border-collapse: collapse; }
         .totals-table td { padding: 2px 0; font-size: 12px; }
         .totals-table td:last-child { text-align: right; }
@@ -334,8 +326,6 @@ export default function DashboardScreen() {
           font-weight: bold;
           font-size: 13px;
         }
-
-        /* ── Payment Mode Box (COD / ONLINE) ── */
         .payment-box {
           border: 2.5px solid #000;
           text-align: center;
@@ -345,8 +335,6 @@ export default function DashboardScreen() {
           font-weight: 900;
           letter-spacing: 4px;
         }
-
-        /* ── Train / Coach Box ── */
         .train-box {
           border: 2.5px solid #000;
           border-top: none;
@@ -380,8 +368,11 @@ export default function DashboardScreen() {
       <table class="detail-table">
         <tr><td>Order No.</td><td>${order.orderNo || order.pnr || 'N/A'}</td></tr>
         <tr><td>Vendor</td><td>${order.vendorName || 'N/A'}</td></tr>
-        <tr><td>Date</td><td>${order.orderDate || new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</td></tr>
-        <tr><td>Time</td><td>${order.orderTime || new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })}</td></tr>
+        
+        <!-- 🟢 CHANGED: Prints Delivery Date and Time on Receipt -->
+        <tr><td>Delivery Date</td><td>${order.deliveryDate || new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</td></tr>
+        <tr><td>Delivery Time</td><td>${order.deliveryTime || new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })}</td></tr>
+        
         <tr><td>Customer Name</td><td>${order.customerName || 'Customer'}</td></tr>
         <tr><td>Mobile</td><td>${order.contactNo || 'N/A'}</td></tr>
       </table>
@@ -436,7 +427,6 @@ export default function DashboardScreen() {
         setTimeout(() => {
           iframe.contentWindow.focus();
           iframe.contentWindow.print();
-          // Mark this order as printed so the button turns green
           setPrintedOrders(prev => new Set([...prev, order.id]));
           setTimeout(() => { document.body.removeChild(iframe); }, 1000);
         }, 200);
@@ -449,7 +439,6 @@ export default function DashboardScreen() {
     }
   };
 
-  // Updated to capture button position
   const openStatusModal = (order, pos) => {
     setSelectedOrder(order);
     setDropdownPos(pos);
@@ -502,8 +491,11 @@ export default function DashboardScreen() {
           <View style={{ width: 36 }} />
           <Text style={[styles.col, { flex: 0.8 }]}>STATUS</Text>
           <Text style={[styles.col, { flex: 1.1 }]}>ORDER NO.</Text>
-          <Text style={[styles.col, { flex: 1.0 }]}>DATE</Text>
-          <Text style={[styles.col, { flex: 0.8 }]}>TIME</Text>
+          
+          {/* 🟢 CHANGED: Updated table headers */}
+          <Text style={[styles.col, { flex: 1.0 }]}>DEL. DATE</Text>
+          <Text style={[styles.col, { flex: 0.8 }]}>DEL. TIME</Text>
+          
           <Text style={[styles.col, { flex: 1.2 }]}>VENDOR</Text>
           <Text style={[styles.col, { flex: 1.2 }]}>TRAIN</Text>
           <Text style={[styles.col, { flex: 0.9 }]}>PAYMENT</Text>
@@ -605,7 +597,7 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Admin / Settings Modal (stays centered — intentional) ── */}
+      {/* ── Admin / Settings Modal ── */}
       <Modal visible={settingsVisible} transparent animationType="fade" onRequestClose={() => setSettingsVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -673,19 +665,7 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, borderWidth: 1, alignSelf: 'flex-start' },
   paymentTag: { fontSize: 10, fontWeight: '700', borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', letterSpacing: 0.5 },
   iconBtn: { width: 32, height: 32, borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center' },
-  tickBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#16a34a',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#fff',
-  },
+  tickBadge: { position: 'absolute', top: -5, right: -5, width: 14, height: 14, borderRadius: 7, backgroundColor: '#16a34a', justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: '#fff' },
   emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
   emptyStateText: { fontSize: 14, color: '#94a3b8' },
   expandedContent: { backgroundColor: '#f8fafc', padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0' },
@@ -712,60 +692,12 @@ const styles = StyleSheet.create({
   amountToCollectBar: { backgroundColor: '#0f172a', padding: 10, borderRadius: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   atcLabel: { color: '#94a3b8', fontWeight: '700', fontSize: 10, letterSpacing: 0.8 },
   atcValue: { color: 'white', fontWeight: '800', fontSize: 15 },
-
-  // ── Dropdown styles ──
-  dropdownBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.15)',
-  },
-  dropdownContainer: {
-    position: 'absolute',
-    backgroundColor: 'white',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    width: 210,
-    paddingVertical: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  dropdownTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94a3b8',
-    letterSpacing: 0.8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderColor: '#f1f5f9',
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderLeftWidth: 3,
-    borderLeftColor: 'transparent',
-  },
-  dropdownItemText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  execDropdownRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    paddingHorizontal: 14,
-    borderBottomWidth: 1,
-    borderColor: '#f1f5f9',
-    gap: 10,
-  },
-
-  // ── Admin modal (centered — intentional) ──
+  dropdownBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.15)' },
+  dropdownContainer: { position: 'absolute', backgroundColor: 'white', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0', width: 210, paddingVertical: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 12 },
+  dropdownTitle: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderColor: '#f1f5f9' },
+  dropdownItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 13, borderLeftWidth: 3, borderLeftColor: 'transparent' },
+  dropdownItemText: { fontSize: 13, fontWeight: '600' },
+  execDropdownRow: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingHorizontal: 14, borderBottomWidth: 1, borderColor: '#f1f5f9', gap: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   modalContainer: { backgroundColor: 'white', width: 360, borderRadius: 10, padding: 24, borderWidth: 1, borderColor: '#e2e8f0' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
