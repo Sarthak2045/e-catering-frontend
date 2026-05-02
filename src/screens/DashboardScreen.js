@@ -131,7 +131,7 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
             <View style={styles.expandSectionMid}>
               <Text style={styles.sectionLabel}>CUSTOMER DETAILS</Text>
               <Text style={styles.remarkText}>{item.customerName}</Text>
-              <Text style={[styles.remarkText, { color: '#64748b' }]}>Mo: {item.contactNo}</Text>
+              <Text style={[styles.remarkText, { color: '#475569', fontWeight: '700'  }]}>Mo: {item.contactNo}</Text>
 
               {item.remark && item.remark.trim() !== '' && (
                 <View style={styles.remarkBox}>
@@ -276,129 +276,156 @@ export default function DashboardScreen() {
       const coachSeat = `${order.coach || '-'}/${order.seat || '-'}`;
 
       const htmlContent = `
-        <html>
-          <head>
-            <title>Receipt</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-            <style>
-              @page { margin: 0; size: 80mm auto; }
-              * { box-sizing: border-box; }
-              body {
-                font-family: 'Courier New', Courier, monospace;
-                width: 80mm;
-                margin: 0 auto;
-                padding: 10px 12px 16px 12px;
-                font-size: 12px;
-                color: #000;
-              }
-              .center { text-align: center; }
-              .bold { font-weight: bold; }
-              .divider { border: none; border-top: 1px dashed #000; margin: 7px 0; }
-              .detail-table { width: 100%; border-collapse: collapse; }
-              .detail-table td { padding: 2px 0; vertical-align: top; }
-              .detail-table td:last-child { text-align: right; }
-              .items-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
-              .items-head th {
-                font-weight: bold;
-                text-align: left;
-                padding: 3px 2px;
-                border-top: 1px dashed #000;
-                border-bottom: 1px dashed #000;
-              }
-              .items-head th:last-child { text-align: right; }
-              .totals-table { width: 100%; border-collapse: collapse; }
-              .totals-table td { padding: 2px 0; }
-              .totals-table td:last-child { text-align: right; }
+  <html>
+    <head>
+      <title>Receipt</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+      <style>
+        @page { margin: 0; size: 80mm auto; }
+        * {
+             box-sizing: border-box;
+             font-weight: inherit;
+          }
+        body {
+             font-family: 'Courier New', Courier, monospace;
+             width: 80mm;
+             margin: 0 auto;
+             padding: 10px 12px 16px 12px;
+             font-size: 12px;
+             color: #000;
+             font-weight: 900;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .divider { border: none; border-top: 1px dashed #000; margin: 7px 0; }
 
-              /* ── Payment Mode Box ── */
-              .payment-box {
-                border: 2.5px solid #000;
-                text-align: center;
-                padding: 10px 4px;
-                margin: 10px 0 0 0;
-                font-size: 32px;
-                font-weight: 900;
-                letter-spacing: 3px;
-              }
+        /* ── Order Detail Table ── */
+        .detail-table { width: 100%; border-collapse: collapse; }
+        .detail-table tr td { padding: 2px 0; vertical-align: top; }
+        .detail-table tr td:first-child { white-space: nowrap; padding-right: 8px; }
+        .detail-table tr td:last-child { text-align: right; word-break: break-word; }
 
-              /* ── Train / Coach Box ── */
-              .train-box {
-                border: 2.5px solid #000;
-                display: flex;
-                margin: 0 0 10px 0;
-              }
-              .train-cell {
-                flex: 1;
-                text-align: center;
-                padding: 10px 4px;
-                font-size: 20px;
-                font-weight: 900;
-                letter-spacing: 1px;
-              }
-              .train-cell.divider-right {
-                border-right: 2.5px solid #000;
-              }
-            </style>
-          </head>
-          <body>
+        /* ── Items Table ── */
+        .items-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
+        .items-head th {
+          font-weight: bold;
+          padding: 4px 2px;
+          border-top: 1px dashed #000;
+          border-bottom: 1px dashed #000;
+          font-size: 12px;
+        }
+        .items-head th:first-child { text-align: left; }
+        .items-head th:last-child { text-align: right; width: 36px; }
+        .items-table tbody tr td { padding: 3px 2px; vertical-align: top; font-size: 12px; }
+        .items-table tbody tr td:last-child { text-align: right; width: 36px; }
 
-            <!-- Header -->
-            <div class="center bold" style="font-size: 16px; margin-bottom: 2px;">E-Catering Orders</div>
-            <div class="center" style="font-size: 11px;">26 - Shree Siddhivinayak Complex,<br/>Railway Station Vadodara</div>
+        /* ── Totals Table ── */
+        .totals-table { width: 100%; border-collapse: collapse; }
+        .totals-table td { padding: 2px 0; font-size: 12px; }
+        .totals-table td:last-child { text-align: right; }
+        .totals-table tr.total-row td {
+          font-weight: bold;
+          font-size: 13px;
+          padding-top: 3px;
+        }
+        .totals-table tr.collect-row td {
+          font-weight: bold;
+          font-size: 13px;
+        }
 
-            <hr class="divider"/>
+        /* ── Payment Mode Box (COD / ONLINE) ── */
+        .payment-box {
+          border: 2.5px solid #000;
+          text-align: center;
+          padding: 8px 4px;
+          margin: 10px 0 0 0;
+          font-size: 30px;
+          font-weight: 900;
+          letter-spacing: 4px;
+        }
 
-            <!-- Order Details -->
-            <div class="center" style="font-size: 11px; margin-bottom: 4px;">Phone :</div>
-            <table class="detail-table">
-              <tr><td>Order No.</td><td>${order.orderNo || order.pnr || 'N/A'}</td></tr>
-              <tr><td>Vendor</td><td>${order.vendorName || 'Samrat'}</td></tr>
-              <tr><td>Date</td><td>${order.orderDate || new Date().toLocaleDateString('en-GB')}</td></tr>
-              <tr><td>Time</td><td>${order.orderTime || new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}</td></tr>
-              <tr><td>Customer Name</td><td>${order.customerName || 'Customer'}</td></tr>
-              <tr><td>Mobile</td><td>${order.contactNo || 'N/A'}</td></tr>
-            </table>
+        /* ── Train / Coach Box ── */
+        .train-box {
+          border: 2.5px solid #000;
+          border-top: none;
+          display: flex;
+          margin: 0 0 10px 0;
+        }
+        .train-cell {
+          flex: 1;
+          text-align: center;
+          padding: 8px 4px;
+          font-size: 18px;
+          font-weight: 900;
+          letter-spacing: 1px;
+        }
+        .train-cell.divider-right {
+          border-right: 2.5px solid #000;
+        }
+      </style>
+    </head>
+    <body>
 
-            <hr class="divider"/>
+      <!-- Header -->
+      <div class="center bold" style="font-size:16px; margin-bottom:2px;">E-Catering Orders</div>
+      <div class="center" style="font-size:11px;">
+        26 - Shree Siddhivinayak Complex,<br/>Railway Station Vadodara
+      </div>
 
-            <!-- Items -->
-            <table class="items-table">
-              <thead class="items-head">
-                <tr><th>Item</th><th>Qty</th></tr>
-              </thead>
-              <tbody>
-                ${itemsHtml}
-              </tbody>
-            </table>
+      <hr class="divider"/>
 
-            <hr class="divider"/>
+      <!-- Order Details -->
+      <table class="detail-table">
+        <tr><td>Order No.</td><td>${order.orderNo || order.pnr || 'N/A'}</td></tr>
+        <tr><td>Vendor</td><td>${order.vendorName || 'N/A'}</td></tr>
+        <tr><td>Date</td><td>${order.orderDate || new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</td></tr>
+        <tr><td>Time</td><td>${order.orderTime || new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })}</td></tr>
+        <tr><td>Customer Name</td><td>${order.customerName || 'Customer'}</td></tr>
+        <tr><td>Mobile</td><td>${order.contactNo || 'N/A'}</td></tr>
+      </table>
 
-            <!-- Totals -->
-            <table class="totals-table">
-              ${remarksHtml}
-              <tr><td>Advance:</td><td>₹ 0</td></tr>
-              <tr><td>GST:</td><td>₹ ${order.tax || 0}</td></tr>
-              <tr><td>Tax:</td><td>₹ 0</td></tr>
-              <tr><td>Discount:</td><td>₹ 0</td></tr>
-              <tr class="bold"><td>Total:</td><td>₹ ${order.totalAmount || 0}</td></tr>
-              <tr class="bold"><td>Amount to collect:</td><td>₹ ${amountToCollect}</td></tr>
-            </table>
+      <hr class="divider"/>
 
-            <!-- Payment Mode Box (big, bold, bordered) -->
-            <div class="payment-box">${paymentType}</div>
+      <!-- Items -->
+      <table class="items-table">
+        <thead class="items-head">
+          <tr><th>Item</th><th>Qty</th></tr>
+        </thead>
+        <tbody>
+          ${itemsHtml}
+        </tbody>
+      </table>
 
-            <!-- Train + Coach/Seat Box (split, bordered) -->
-            <div class="train-box">
-              <div class="train-cell divider-right">${trainNo}</div>
-              <div class="train-cell">${coachSeat}</div>
-            </div>
+      <hr class="divider"/>
 
-            <!-- Footer -->
-            <div class="center" style="font-size: 11px;">www.imperiial.tech</div>
+      <!-- Totals -->
+      <table class="totals-table">
+        <tr><td>Remarks:</td><td>${order.remark && order.remark.trim() !== '' ? order.remark : ''}</td></tr>
+        <tr><td>Advance:</td><td>₹ 0</td></tr>
+        <tr><td>GST:</td><td>₹ ${order.tax || 0}</td></tr>
+        <tr><td>Tax:</td><td>₹ 0</td></tr>
+        <tr><td>Discount:</td><td>₹ 0</td></tr>
+        <tr class="total-row"><td>Total:</td><td>₹ ${order.totalAmount || 0}</td></tr>
+        <tr class="collect-row"><td>Amount to collect:</td><td>₹ ${amountToCollect}</td></tr>
+      </table>
 
-          </body>
-        </html>
-      `;
+      <!-- Payment Mode Box -->
+      <div class="payment-box">${paymentType}</div>
+
+      <!-- Train + Coach/Seat Box -->
+      <div class="train-box">
+        <div class="train-cell divider-right">${trainNo}</div>
+        <div class="train-cell">${coachSeat}</div>
+      </div>
+
+      <!-- Footer -->
+      <div class="center" style="font-size:11px;">www.imperiial.tech</div>
+
+    </body>
+  </html>
+`;
 
       if (Platform.OS === 'web') {
         const iframe = document.createElement('iframe');
@@ -667,10 +694,10 @@ const styles = StyleSheet.create({
   miniTableHeader: { flexDirection: 'row', backgroundColor: '#f8fafc', padding: 8, borderBottomWidth: 1, borderColor: '#e2e8f0' },
   miniHeadText: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.6 },
   miniTableRow: { flexDirection: 'row', padding: 9, borderBottomWidth: 1, borderColor: '#f1f5f9' },
-  miniCellText: { fontSize: 13, color: '#334155' },
+  miniCellText: { fontSize: 13,  color: '#0f172a', fontWeight: '700'  },
   expandSectionMid: { flex: 1, padding: 12, backgroundColor: 'white', borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0' },
   sectionLabel: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8, marginBottom: 8 },
-  remarkText: { fontSize: 13, color: '#0f172a', fontWeight: '500', marginBottom: 3 },
+  remarkText: { fontSize: 13, color: '#0f172a', fontWeight: '700', marginBottom: 3 },
   remarkBox: { marginTop: 10, padding: 10, backgroundColor: '#fffbeb', borderRadius: 6, borderWidth: 1, borderColor: '#fde68a' },
   remarkAlertText: { fontSize: 10, fontWeight: '700', color: '#b45309', marginBottom: 3, letterSpacing: 0.5 },
   remarkContentText: { fontSize: 12, color: '#92400e', fontWeight: '600', lineHeight: 16 },
@@ -679,8 +706,8 @@ const styles = StyleSheet.create({
   assignedBadgeName: { fontSize: 13, fontWeight: '700', color: '#14532d' },
   expandSectionRight: { flex: 1, backgroundColor: 'white', borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0', padding: 12 },
   financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  financeLabel: { fontSize: 12, color: '#64748b' },
-  financeValue: { fontSize: 13, fontWeight: '600', color: '#0f172a' },
+  financeLabel: { fontSize: 12, color: '#334155', fontWeight: '600' },
+  financeValue: { fontSize: 13, fontWeight: '800', color: '#0f172a' },
   financeDivider: { height: 1, backgroundColor: '#e2e8f0', marginVertical: 8 },
   amountToCollectBar: { backgroundColor: '#0f172a', padding: 10, borderRadius: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   atcLabel: { color: '#94a3b8', fontWeight: '700', fontSize: 10, letterSpacing: 0.8 },
