@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, SectionList, StyleSheet, Modal } from 'react-native';
-import Toast from 'react-native-toast-message';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,52 +38,39 @@ export default function MenuScreen() {
 
   // ── Add Category ──────────────────────────────────────────────────────────
   const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) {
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Category name is required' });
-      return;
-    }
-    await addDoc(collection(db, 'categories'), { name: newCategoryName.trim() });
-    Toast.show({ type: 'success', text1: 'Success', text2: 'Category added successfully' });
-    setNewCategoryName('');
-    setCatModalVisible(false);
-  };
-
+  if (!newCategoryName.trim()) return;   // silent validation
+  await addDoc(collection(db, 'categories'), { name: newCategoryName.trim() });
+  setNewCategoryName('');
+  setCatModalVisible(false);
+};
   // ── Add Menu Item ─────────────────────────────────────────────────────────
-  const handleAddItem = async () => {
-    if (!newItemName || !newItemPrice || !selectedCategory) {
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Please fill all fields and select a category' });
-      return;
-    }
-    await addDoc(collection(db, 'menuItems'), {
-      name: newItemName,
-      price: parseFloat(newItemPrice),
-      categoryId: selectedCategory,
-      isVeg: isVeg,
-    });
-    Toast.show({ type: 'success', text1: 'Added', text2: 'Menu item added successfully' });
-    setItemModalVisible(false);
-    setNewItemName('');
-    setNewItemPrice('');
-    setIsVeg(true);
-  };
+ const handleAddItem = async () => {
+  if (!newItemName || !newItemPrice || !selectedCategory) return;  // silent
+  await addDoc(collection(db, 'menuItems'), {
+    name: newItemName,
+    price: parseFloat(newItemPrice),
+    categoryId: selectedCategory,
+    isVeg: isVeg,
+  });
+  setItemModalVisible(false);
+  setNewItemName('');
+  setNewItemPrice('');
+  setIsVeg(true);
+};
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = async (col, id) => {
-    try {
-      await deleteDoc(doc(db, col, id));
-      Toast.show({ type: 'success', text1: 'Deleted', text2: 'Item deleted successfully' });
-    } catch {
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Could not delete item' });
-    }
-  };
+  try {
+    await deleteDoc(doc(db, col, id));
+  } catch (e) {
+    console.error('Delete failed:', e);
+  }
+};
 
-  const openItemModal = () => {
-    if (categories.length === 0) {
-      Toast.show({ type: 'error', text1: 'Error', text2: 'Please add a Category first!' });
-      return;
-    }
-    setItemModalVisible(true);
-  };
+ const openItemModal = () => {
+  if (categories.length === 0) return;  // silent guard
+  setItemModalVisible(true);
+};
 
   // ── Build category-based sections (sorted A→Z by category name) ──────────
   const buildSections = () => {
