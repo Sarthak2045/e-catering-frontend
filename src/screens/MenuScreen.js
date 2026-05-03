@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet,
-  Alert, Modal, Platform
-} from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, SectionList, StyleSheet, Modal } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,8 +39,12 @@ export default function MenuScreen() {
 
   // ── Add Category ──────────────────────────────────────────────────────────
   const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) return;
+    if (!newCategoryName.trim()) {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Category name is required' });
+      return;
+    }
     await addDoc(collection(db, 'categories'), { name: newCategoryName.trim() });
+    Toast.show({ type: 'success', text1: 'Success', text2: 'Category added successfully' });
     setNewCategoryName('');
     setCatModalVisible(false);
   };
@@ -50,7 +52,7 @@ export default function MenuScreen() {
   // ── Add Menu Item ─────────────────────────────────────────────────────────
   const handleAddItem = async () => {
     if (!newItemName || !newItemPrice || !selectedCategory) {
-      Alert.alert('Error', 'Please fill all fields and select a category');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please fill all fields and select a category' });
       return;
     }
     await addDoc(collection(db, 'menuItems'), {
@@ -59,6 +61,7 @@ export default function MenuScreen() {
       categoryId: selectedCategory,
       isVeg: isVeg,
     });
+    Toast.show({ type: 'success', text1: 'Added', text2: 'Menu item added successfully' });
     setItemModalVisible(false);
     setNewItemName('');
     setNewItemPrice('');
@@ -67,30 +70,56 @@ export default function MenuScreen() {
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = async (col, id) => {
-    const doDelete = async () => {
+    try {
       await deleteDoc(doc(db, col, id));
-    };
-    if (Platform.OS === 'web') {
-      if (window.confirm('Delete this item?')) doDelete();
-    } else {
-      Alert.alert('Delete', 'Are you sure?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', onPress: doDelete, style: 'destructive' },
-      ]);
+      Toast.show({ type: 'success', text1: 'Deleted', text2: 'Item deleted successfully' });
+    } catch {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Could not delete item' });
     }
   };
 
-  const filteredItems = menuItems.filter(item =>
-    item.name?.toLowerCase().includes(search.toLowerCase())
-  );
-
   const openItemModal = () => {
     if (categories.length === 0) {
-      Alert.alert('Error', 'Please add a Category first!');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please add a Category first!' });
       return;
     }
     setItemModalVisible(true);
   };
+
+  // ── Build category-based sections (sorted A→Z by category name) ──────────
+  const buildSections = () => {
+    const filtered = menuItems.filter(item =>
+      item.name?.toLowerCase().includes(search.toLowerCase())
+    );
+
+    // Group by category name
+    const grouped = {};
+    filtered.forEach(item => {
+      const catName = categories.find(c => c.id === item.categoryId)?.name || 'Unknown';
+      if (!grouped[catName]) grouped[catName] = [];
+      grouped[catName].push(item);
+    });
+
+    // Sort category names A→Z and build SectionList data format
+    return Object.keys(grouped)
+      .sort((a, b) => a.localeCompare(b))
+      .map(catName => ({ title: catName, data: grouped[catName] }));
+  };
+
+  const sections = buildSections();
+
+  // Compute global serial number across all sections
+  const buildSerialMap = () => {
+    const map = {};
+    let counter = 1;
+    sections.forEach(sec => {
+      sec.data.forEach(item => {
+        map[item.id] = counter++;
+      });
+    });
+    return map;
+  };
+  const serialMap = buildSerialMap();
 
   return (
     <View style={styles.screen}>
@@ -104,7 +133,7 @@ export default function MenuScreen() {
       {/* ── Toolbar: Search + Buttons ── */}
       <View style={styles.actionBar}>
         <View style={styles.searchBox}>
-          <Ionicons name="search-outline" size={10} color="#94a3b8" style={{ marginRight: 8 }} />
+          <Ionicons name="search-outline" size={15} color="#94a3b8" style={{ marginRight: 8 }} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search items..."
@@ -113,14 +142,16 @@ export default function MenuScreen() {
             onChangeText={setSearch}
           />
         </View>
-        <TouchableOpacity style={styles.actionBtn} onPress={openItemModal}>
-          <Ionicons name="add" size={15} color="white" />
-          <Text style={styles.actionBtnText}>MENU ITEM</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => setCatModalVisible(true)}>
-          <Ionicons name="add" size={15} color="white" />
-          <Text style={styles.actionBtnText}>CATEGORY</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 10, marginLeft: 'auto' }}>
+          <TouchableOpacity style={styles.actionBtn} onPress={openItemModal}>
+            <Ionicons name="add" size={15} color="white" />
+            <Text style={styles.actionBtnText}>MENU ITEM</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => setCatModalVisible(true)}>
+            <Ionicons name="add" size={15} color="white" />
+            <Text style={styles.actionBtnText}>CATEGORY</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── Table ── */}
@@ -136,42 +167,39 @@ export default function MenuScreen() {
           <Text style={[styles.th, { flex: 1.2 }]}>Actions</Text>
         </View>
 
-        {/* Rows */}
-        <FlatList
-          data={filteredItems}
+        {/* Alphabetical Sections */}
+        <SectionList
+          sections={sections}
           keyExtractor={item => item.id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 40 }}
-          ListEmptyComponent={
-            <View style={styles.emptyRow}>
-              <Ionicons name="restaurant-outline" size={28} color="#cbd5e1" />
-              <Text style={styles.emptyText}>No menu items yet. Click + MENU ITEM to add one.</Text>
+          stickySectionHeadersEnabled={true}
+
+          // ── Category Divider Header ──
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionCategoryBadge}>
+                <Text style={styles.sectionCategoryText}>{section.title}</Text>
+              </View>
+              <View style={styles.sectionDividerLine} />
+              <Text style={styles.sectionCount}>{section.data.length} item{section.data.length !== 1 ? 's' : ''}</Text>
             </View>
-          }
+          )}
+
+          // ── Row ──
           renderItem={({ item, index }) => {
             const catName = categories.find(c => c.id === item.categoryId)?.name || 'Unknown';
-            const veg = item.isVeg !== false; // default true
+            const veg = item.isVeg !== false;
+            const srNo = serialMap[item.id];
             return (
               <View style={[styles.tableRow, index % 2 !== 0 && styles.tableRowAlt]}>
-
-                {/* Sr No */}
-                <Text style={[styles.td, styles.tdBold, { flex: 0.6 }]}>{index + 1}</Text>
-
-                {/* Item Name */}
+                <Text style={[styles.td, styles.tdBold, { flex: 0.6 }]}>{srNo}</Text>
                 <Text style={[styles.td, styles.tdBold, { flex: 2 }]}>{item.name}</Text>
-
-                {/* Menu / Category */}
-                <Text style={[styles.td,  styles.tdBold, { flex: 1.4 }]}>{catName}</Text>
-
-                {/* Price */}
+                <Text style={[styles.td, styles.tdBold, { flex: 1.4 }]}>{catName}</Text>
                 <Text style={[styles.td, styles.tdBold, { flex: 1 }]}>₹ {item.price}</Text>
-
-                {/* Veg / NonVeg */}
                 <View style={[styles.tdCell, { flex: 1.2, justifyContent: 'center' }]}>
                   <View style={[styles.vegDot, { backgroundColor: veg ? '#16a34a' : '#dc2626' }]} />
                 </View>
-
-                {/* Actions */}
                 <View style={[styles.tdCell, { flex: 1.2, gap: 8, justifyContent: 'center' }]}>
                   <TouchableOpacity style={styles.editBtn}>
                     <Ionicons name="pencil" size={13} color="white" />
@@ -183,10 +211,16 @@ export default function MenuScreen() {
                     <Ionicons name="trash" size={13} color="white" />
                   </TouchableOpacity>
                 </View>
-
               </View>
             );
           }}
+
+          ListEmptyComponent={
+            <View style={styles.emptyRow}>
+              <Ionicons name="restaurant-outline" size={28} color="#cbd5e1" />
+              <Text style={styles.emptyText}>No menu items yet. Click + MENU ITEM to add one.</Text>
+            </View>
+          }
         />
       </View>
 
@@ -194,16 +228,13 @@ export default function MenuScreen() {
       <Modal visible={catModalVisible} transparent animationType="fade" onRequestClose={() => setCatModalVisible(false)}>
         <View style={styles.overlay}>
           <View style={styles.modalCard}>
-
             <View style={styles.modalTop}>
               <Text style={styles.modalTitle}>Add Category</Text>
               <TouchableOpacity style={styles.closeBtn} onPress={() => { setCatModalVisible(false); setNewCategoryName(''); }}>
                 <Text style={styles.closeBtnText}>×</Text>
               </TouchableOpacity>
             </View>
-
             <View style={styles.divider} />
-
             <Text style={styles.fieldLabel}>Category Name</Text>
             <TextInput
               style={styles.fieldInput}
@@ -212,7 +243,6 @@ export default function MenuScreen() {
               value={newCategoryName}
               onChangeText={setNewCategoryName}
             />
-
             <View style={styles.modalFooter}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => { setCatModalVisible(false); setNewCategoryName(''); }}>
                 <Text style={styles.cancelBtnText}>CANCEL</Text>
@@ -225,7 +255,6 @@ export default function MenuScreen() {
                 <Text style={styles.addBtnText}>ADD</Text>
               </TouchableOpacity>
             </View>
-
           </View>
         </View>
       </Modal>
@@ -234,17 +263,14 @@ export default function MenuScreen() {
       <Modal visible={itemModalVisible} transparent animationType="fade" onRequestClose={() => setItemModalVisible(false)}>
         <View style={styles.overlay}>
           <View style={[styles.modalCard, { maxWidth: 500 }]}>
-
             <View style={styles.modalTop}>
               <Text style={styles.modalTitle}>Add Menu Item</Text>
               <TouchableOpacity style={styles.closeBtn} onPress={() => { setItemModalVisible(false); setNewItemName(''); setNewItemPrice(''); setIsVeg(true); }}>
                 <Text style={styles.closeBtnText}>×</Text>
               </TouchableOpacity>
             </View>
-
             <View style={styles.divider} />
 
-            {/* Menu (Category) Picker */}
             <Text style={styles.fieldLabel}>Menu Name</Text>
             <View style={styles.pickerWrap}>
               <Picker
@@ -259,7 +285,6 @@ export default function MenuScreen() {
               </Picker>
             </View>
 
-            {/* Veg / Non-Veg */}
             <View style={styles.radioRow}>
               <TouchableOpacity style={styles.radioOption} onPress={() => setIsVeg(true)}>
                 <View style={[styles.radioOuter, isVeg && styles.radioOuterActive]}>
@@ -275,7 +300,6 @@ export default function MenuScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Item Name */}
             <Text style={styles.fieldLabel}>Item Name</Text>
             <TextInput
               style={styles.fieldInput}
@@ -285,7 +309,6 @@ export default function MenuScreen() {
               onChangeText={setNewItemName}
             />
 
-            {/* Item Price */}
             <Text style={styles.fieldLabel}>Item Price</Text>
             <TextInput
               style={[styles.fieldInput, { width: '50%' }]}
@@ -304,7 +327,6 @@ export default function MenuScreen() {
                 <Text style={styles.addBtnDarkText}>ADD</Text>
               </TouchableOpacity>
             </View>
-
           </View>
         </View>
       </Modal>
@@ -322,11 +344,11 @@ const styles = StyleSheet.create({
   pageSub:    { fontSize: 13, color: '#94a3b8', marginTop: 3, fontWeight: '500' },
 
   // Action Bar
-  actionBar:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
-  searchBox:      { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10 },
-  searchInput:    { flex: 1, fontSize: 14, color: '#0f172a', outlineStyle: 'none' },
-  actionBtn:      { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#111827', paddingVertical: 11, paddingHorizontal: 18, borderRadius: 8 },
-  actionBtnText:  { color: 'white', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
+  actionBar:     { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  searchBox:     { width: 220, flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  searchInput:   { flex: 1, fontSize: 14, color: '#0f172a', outlineStyle: 'none' },
+  actionBtn:     { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#111827', paddingVertical: 11, paddingHorizontal: 18, borderRadius: 8 },
+  actionBtnText: { color: 'white', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
 
   // Table
   tableWrapper: { flex: 1, backgroundColor: 'white', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' },
@@ -339,7 +361,44 @@ const styles = StyleSheet.create({
   tdBold:      { fontWeight: '700', color: '#111827' },
   tdCell:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
 
-  // Veg dot - solid, clear, no border
+  // ── Category Section Header ──
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderTopWidth: 1,
+    borderColor: '#e2e8f0',
+    gap: 12,
+  },
+  sectionCategoryBadge: {
+    backgroundColor: '#111827',
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 6,
+  },
+  sectionCategoryText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: 'white',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  sectionDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#cbd5e1',
+  },
+  sectionCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94a3b8',
+    letterSpacing: 0.3,
+  },
+
+  // Veg dot
   vegDot: { width: 22, height: 22, borderRadius: 11 },
 
   // Row action buttons
@@ -366,25 +425,22 @@ const styles = StyleSheet.create({
     marginBottom: 16, outlineStyle: 'none',
   },
 
-  // Picker
   pickerWrap: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, backgroundColor: '#f8fafc', overflow: 'hidden', marginBottom: 16 },
   picker:     { height: 48, width: '100%' },
 
-  // Radio buttons
   radioRow:    { flexDirection: 'row', gap: 24, marginBottom: 16 },
   radioOption: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  radioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#cbd5e1', justifyContent: 'center', alignItems: 'center' },
+  radioOuter:       { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#cbd5e1', justifyContent: 'center', alignItems: 'center' },
   radioOuterActive: { borderColor: '#374151' },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#374151' },
-  radioLabel: { fontSize: 14, color: '#374151', fontWeight: '500' },
+  radioInner:       { width: 10, height: 10, borderRadius: 5, backgroundColor: '#374151' },
+  radioLabel:       { fontSize: 14, color: '#374151', fontWeight: '500' },
 
-  // Modal footer buttons
   modalFooter:   { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 8 },
   cancelBtn:     { backgroundColor: '#9f1239', paddingVertical: 11, paddingHorizontal: 22, borderRadius: 8, justifyContent: 'center' },
   cancelBtnText: { color: 'white', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
-  addBtn:        { backgroundColor: '#e2e8f0', paddingVertical: 11, paddingHorizontal: 22, borderRadius: 8, justifyContent: 'center' },
+  addBtn:        { backgroundColor: '#111827', paddingVertical: 11, paddingHorizontal: 22, borderRadius: 8, justifyContent: 'center' },
   addBtnDisabled:{ opacity: 0.5 },
-  addBtnText:    { color: '#94a3b8', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
+  addBtnText:    { color: '#e2e8f0', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
   addBtnDark:    { backgroundColor: '#111827', paddingVertical: 11, paddingHorizontal: 22, borderRadius: 8, justifyContent: 'center' },
   addBtnDarkText:{ color: 'white', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 },
 });
