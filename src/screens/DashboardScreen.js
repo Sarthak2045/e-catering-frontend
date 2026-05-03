@@ -11,7 +11,7 @@ import { db } from '../firebaseConfig';
 
 const screenWidth = Dimensions.get('window').width;
 
-let isShiftStarted = false;
+let isShiftStarted = true;
 
 const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }) => {
   const [expanded, setExpanded] = useState(false);
@@ -59,7 +59,7 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
 
         <Text style={[styles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>{item.orderNo}</Text>
         
-        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.deliveryDate || '—'}</Text>
+         <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.deliveryDate ? new Date(item.deliveryDate).toLocaleDateString('en-GB') : '—'} </Text>
         <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.deliveryTime || '—'}</Text>
         
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>{item.vendorName}</Text>
@@ -172,7 +172,7 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
 };
 
 export default function DashboardScreen() {
-  const [appReady, setAppReady] = useState(isShiftStarted);
+  const [appReady, setAppReady] = useState(true);
   const [orders, setOrders] = useState([]);
   const [executives, setExecutives] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -371,7 +371,7 @@ export default function DashboardScreen() {
       <table class="detail-table">
         <tr><td>Order No.</td><td>${order.orderNo || order.pnr || 'N/A'}</td></tr>
         <tr><td>Vendor</td><td>${order.vendorName || 'N/A'}</td></tr>
-        <tr><td>Date</td><td>${order.deliveryDate || new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</td></tr>
+        <tr><td>Date</td><td>${order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('en-GB'): new Date().toLocaleDateString('en-GB')} </td></tr>
         <tr><td>Time</td><td>${order.deliveryTime || new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })}</td></tr>
         <tr><td>Customer</td><td>${order.customerName || 'Customer'}</td></tr>
         <tr><td>Mobile</td><td>${order.contactNo || 'N/A'}</td></tr>
@@ -462,18 +462,6 @@ export default function DashboardScreen() {
     await updateDoc(doc(db, 'orders', selectedOrder.id), { assignedExecutiveId: exec.id, assignedExecutiveName: exec.name });
     setAssignModalVisible(false);
   };
-
-  if (!appReady) return (
-    <View style={styles.lockScreen}>
-      <View style={styles.lockIconWrapper}><Ionicons name="restaurant" size={40} color="#0f172a" /></View>
-      <Text style={styles.lockTitle}>Samrat Catering</Text>
-      <Text style={styles.lockSubtitle}>Kitchen Management System</Text>
-      <TouchableOpacity style={styles.startButton} onPress={initSoundSystem}>
-        <Text style={styles.startText}>START SHIFT</Text>
-        <Ionicons name="arrow-forward" size={16} color="#0f172a" />
-      </TouchableOpacity>
-    </View>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
