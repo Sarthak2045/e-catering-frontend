@@ -301,7 +301,7 @@ export default function DashboardScreen() {
           }
         .center { text-align: center; }
         .bold { font-weight: bold; }
-        .divider { border: none; border-top: 1px dashed #000; margin: 7px 0; }
+        .divider { border: none; border-top: 1px #000; margin: 7px 0; }
         .detail-table { width: 100%; border-collapse: collapse; }
         .detail-table tr td { padding: 2px 0; vertical-align: top; }
         .detail-table tr td:first-child { white-space: nowrap; padding-right: 8px; }
@@ -312,23 +312,23 @@ export default function DashboardScreen() {
           padding: 4px 2px;
           border-top: 1px dashed #000;
           border-bottom: 1px dashed #000;
-          font-size: 12px;
+          font-size: 14px;
         }
         .items-head th:first-child { text-align: left; }
         .items-head th:last-child { text-align: right; width: 40px; }
-        .items-table tbody tr td { padding: 3px 2px; vertical-align: top; font-size: 12px; }
+        .items-table tbody tr td { padding: 3px 2px; vertical-align: top; font-size: 15px; }
         .items-table tbody tr td:last-child { text-align: right; width: 40px; }
         .totals-table { width: 100%; border-collapse: collapse; }
-        .totals-table td { padding: 2px 0; font-size: 12px; }
+        .totals-table td { padding: 2px 0; font-size: 14px; }
         .totals-table td:last-child { text-align: right; padding-right: 6px; } 
         .totals-table tr.total-row td {
           font-weight: bold;
-          font-size: 13px;
+          font-size: 14px;
           padding-top: 3px;
         }
         .totals-table tr.collect-row td {
           font-weight: bold;
-          font-size: 13px;
+          font-size: 14px;
         }
         .payment-box {
           border: 2.5px solid #000;
@@ -412,7 +412,7 @@ export default function DashboardScreen() {
       </div>
 
       <!-- Footer -->
-      <div class="center" style="font-size:11px;">www.imperiial.tech</div>
+      <div class="center" style="font-size:14px;">www.imperiial.tech</div>
 
     </body>
   </html>
