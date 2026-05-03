@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, Dimensions
+  View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet,
+  Alert, Dimensions, Modal, Platform, FlatList
 } from 'react-native';
 import { collection, onSnapshot, addDoc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
@@ -9,7 +10,6 @@ import { Picker } from '@react-native-picker/picker';
 
 const isWeb = Dimensions.get('window').width > 768;
 
-// 🟢 Full Vendor List
 const VENDOR_LIST = [
   'Direct', 'IRCTC3', 'RAILOFY', 'Food_Train', 'Go_Food', 'IRCTC', 'OLF',
   'Rail_Food', 'Rail_Restro', 'Rail_Yatri', 'Rajdhani', 'Yatri_Bhojan',
@@ -19,6 +19,411 @@ const VENDOR_LIST = [
   'YatriRestro', 'HomeBytes'
 ].sort();
 
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS_SHORT = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+// ─── Date+Time Picker Modal ────────────────────────────────────────────────────
+function DateTimePicker({ visible, onClose, onConfirm, initialDate, initialTime }) {
+  const now = new Date();
+  const parseInitial = () => {
+    if (initialDate) {
+      const [y, m, d] = initialDate.split('-').map(Number);
+      if (y && m && d) return new Date(y, m - 1, d);
+    }
+    return new Date();
+  };
+
+  const [viewDate, setViewDate] = useState(parseInitial);
+  const [selectedDate, setSelectedDate] = useState(parseInitial);
+  const [hour, setHour] = useState(() => {
+    if (initialTime) return parseInt(initialTime.split(':')[0]) || now.getHours();
+    return now.getHours();
+  });
+  const [minute, setMinute] = useState(() => {
+    if (initialTime) return parseInt(initialTime.split(':')[1]) || now.getMinutes();
+    return now.getMinutes();
+  });
+  const [showMonthDropdown, setShowMonthDropdown] = useState(false);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const calendarCells = [];
+  for (let i = 0; i < firstDay; i++) {
+    const prevDay = new Date(year, month, -firstDay + i + 1);
+    calendarCells.push({ date: prevDay, current: false });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    calendarCells.push({ date: new Date(year, month, d), current: true });
+  }
+  const remaining = 42 - calendarCells.length;
+  for (let d = 1; d <= remaining; d++) {
+    calendarCells.push({ date: new Date(year, month + 1, d), current: false });
+  }
+
+  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
+
+  const isSameDay = (a, b) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const handleConfirm = () => {
+    const y = selectedDate.getFullYear();
+    const m = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const d = String(selectedDate.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
+    const timeStr = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    onConfirm(dateStr, timeStr);
+    onClose();
+  };
+
+  const handleNow = () => {
+    const n = new Date();
+    setSelectedDate(n);
+    setViewDate(n);
+    setHour(n.getHours());
+    setMinute(n.getMinutes());
+  };
+
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = Array.from({ length: 60 }, (_, i) => i);
+
+  // Scroll refs for time columns
+  const hourScrollRef = useRef(null);
+  const minScrollRef = useRef(null);
+  const ITEM_H = 44;
+
+  useEffect(() => {
+    if (visible) {
+      setTimeout(() => {
+        hourScrollRef.current?.scrollTo({ y: hour * ITEM_H, animated: false });
+        minScrollRef.current?.scrollTo({ y: minute * ITEM_H, animated: false });
+      }, 50);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={dtp.backdrop} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
+          <View style={dtp.container}>
+            {/* Month/Year Header */}
+            <View style={dtp.header}>
+              <TouchableOpacity
+                style={dtp.monthBtn}
+                onPress={() => setShowMonthDropdown(!showMonthDropdown)}
+              >
+                <Text style={dtp.monthText}>{MONTHS[month].toUpperCase()} {year}</Text>
+                <Ionicons name="chevron-down" size={14} color="#0f172a" />
+              </TouchableOpacity>
+              <View style={dtp.navBtns}>
+                <TouchableOpacity style={dtp.navBtn} onPress={prevMonth}>
+                  <Ionicons name="chevron-back" size={16} color="#475569" />
+                </TouchableOpacity>
+                <TouchableOpacity style={dtp.navBtn} onPress={nextMonth}>
+                  <Ionicons name="chevron-forward" size={16} color="#475569" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Month Dropdown */}
+            {showMonthDropdown && (
+              <View style={dtp.monthDropdown}>
+                <ScrollView style={{ maxHeight: 200 }}>
+                  {MONTHS.map((m, idx) => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[dtp.monthDropItem, idx === month && dtp.monthDropItemActive]}
+                      onPress={() => { setViewDate(new Date(year, idx, 1)); setShowMonthDropdown(false); }}
+                    >
+                      <Text style={[dtp.monthDropText, idx === month && dtp.monthDropTextActive]}>{m}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            <View style={dtp.body}>
+              {/* Calendar */}
+              <View style={dtp.calendar}>
+                {/* Day headers */}
+                <View style={dtp.dayRow}>
+                  {DAYS_SHORT.map(d => (
+                    <View key={d} style={dtp.dayCell}>
+                      <Text style={dtp.dayHeadText}>{d}</Text>
+                    </View>
+                  ))}
+                </View>
+                {/* Date grid */}
+                {Array.from({ length: 6 }, (_, row) => (
+                  <View key={row} style={dtp.dayRow}>
+                    {calendarCells.slice(row * 7, row * 7 + 7).map((cell, col) => {
+                      const isSelected = isSameDay(cell.date, selectedDate);
+                      const isToday = isSameDay(cell.date, now);
+                      return (
+                        <TouchableOpacity
+                          key={col}
+                          style={[dtp.dateCell, isSelected && dtp.dateCellSelected]}
+                          onPress={() => { setSelectedDate(cell.date); setViewDate(cell.date); }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[
+                            dtp.dateCellText,
+                            !cell.current && dtp.dateCellFaded,
+                            isToday && !isSelected && dtp.dateCellToday,
+                            isSelected && dtp.dateCellTextSelected,
+                          ]}>
+                            {cell.date.getDate()}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+
+              {/* Divider */}
+              <View style={dtp.divider} />
+
+              {/* Time Picker */}
+              <View style={dtp.timePicker}>
+                <Text style={dtp.timeLabel}>Hr</Text>
+                <Text style={dtp.timeLabel}>Min</Text>
+
+                <View style={dtp.timeColumns}>
+                  {/* Hour scroll */}
+                  <View style={dtp.timeColWrap}>
+                    <View style={dtp.timeHighlight} pointerEvents="none" />
+                    <ScrollView
+                      ref={hourScrollRef}
+                      style={dtp.timeScroll}
+                      showsVerticalScrollIndicator={false}
+                      snapToInterval={ITEM_H}
+                      decelerationRate="fast"
+                      onMomentumScrollEnd={e => {
+                        const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_H);
+                        setHour(Math.max(0, Math.min(23, idx)));
+                      }}
+                    >
+                      <View style={{ height: ITEM_H * 2 }} />
+                      {hours.map(h => (
+                        <TouchableOpacity
+                          key={h}
+                          style={[dtp.timeItem, h === hour && dtp.timeItemSelected]}
+                          onPress={() => {
+                            setHour(h);
+                            hourScrollRef.current?.scrollTo({ y: h * ITEM_H, animated: true });
+                          }}
+                        >
+                          <Text style={[dtp.timeItemText, h === hour && dtp.timeItemTextSelected]}>
+                            {String(h).padStart(2, '0')}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                      <View style={{ height: ITEM_H * 2 }} />
+                    </ScrollView>
+                  </View>
+
+                  <Text style={dtp.timeSep}>:</Text>
+
+                  {/* Minute scroll */}
+                  <View style={dtp.timeColWrap}>
+                    <View style={dtp.timeHighlight} pointerEvents="none" />
+                    <ScrollView
+                      ref={minScrollRef}
+                      style={dtp.timeScroll}
+                      showsVerticalScrollIndicator={false}
+                      snapToInterval={ITEM_H}
+                      decelerationRate="fast"
+                      onMomentumScrollEnd={e => {
+                        const idx = Math.round(e.nativeEvent.contentOffset.y / ITEM_H);
+                        setMinute(Math.max(0, Math.min(59, idx)));
+                      }}
+                    >
+                      <View style={{ height: ITEM_H * 2 }} />
+                      {minutes.map(m => (
+                        <TouchableOpacity
+                          key={m}
+                          style={[dtp.timeItem, m === minute && dtp.timeItemSelected]}
+                          onPress={() => {
+                            setMinute(m);
+                            minScrollRef.current?.scrollTo({ y: m * ITEM_H, animated: true });
+                          }}
+                        >
+                          <Text style={[dtp.timeItemText, m === minute && dtp.timeItemTextSelected]}>
+                            {String(m).padStart(2, '0')}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                      <View style={{ height: ITEM_H * 2 }} />
+                    </ScrollView>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Footer */}
+            <View style={dtp.footer}>
+              <TouchableOpacity style={dtp.nowBtn} onPress={handleNow}>
+                <Text style={dtp.nowText}>NOW</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={dtp.okBtn} onPress={handleConfirm}>
+                <Text style={dtp.okText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+const dtp = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' },
+  container: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: 480,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 32,
+    elevation: 20,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderColor: '#f1f5f9',
+  },
+  monthBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  monthText: { fontSize: 14, fontWeight: '800', color: '#0f172a', letterSpacing: 0.5 },
+  navBtns: { flexDirection: 'row', gap: 4 },
+  navBtn: {
+    width: 32, height: 32, borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center',
+  },
+  monthDropdown: {
+    position: 'absolute', top: 52, left: 16, right: 16, zIndex: 100,
+    backgroundColor: '#fff', borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12,
+    elevation: 10,
+  },
+  monthDropItem: { paddingVertical: 10, paddingHorizontal: 14 },
+  monthDropItemActive: { backgroundColor: '#f1f5f9' },
+  monthDropText: { fontSize: 13, color: '#475569', fontWeight: '500' },
+  monthDropTextActive: { color: '#0f172a', fontWeight: '700' },
+
+  body: { flexDirection: 'row', padding: 16, gap: 0 },
+  calendar: { flex: 1 },
+  dayRow: { flexDirection: 'row' },
+  dayCell: { flex: 1, height: 36, justifyContent: 'center', alignItems: 'center' },
+  dayHeadText: { fontSize: 11, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.5 },
+  dateCell: {
+    flex: 1, height: 40, justifyContent: 'center', alignItems: 'center',
+    borderRadius: 6, margin: 1,
+  },
+  dateCellSelected: { backgroundColor: '#0f172a' },
+  dateCellText: { fontSize: 13, color: '#0f172a', fontWeight: '500' },
+  dateCellFaded: { color: '#cbd5e1' },
+  dateCellToday: { color: '#0f172a', fontWeight: '800', textDecorationLine: 'underline' },
+  dateCellTextSelected: { color: '#fff', fontWeight: '700' },
+
+  divider: { width: 1, backgroundColor: '#f1f5f9', marginHorizontal: 16 },
+
+  timePicker: { width: 120, alignItems: 'center' },
+  timeLabel: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8, marginBottom: 4, alignSelf: 'flex-start', marginLeft: 4 },
+  timeColumns: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  timeColWrap: { width: 52, height: 220, position: 'relative', overflow: 'hidden' },
+  timeHighlight: {
+    position: 'absolute', top: '50%', left: 0, right: 0,
+    height: 44, marginTop: -22,
+    backgroundColor: '#f1f5f9', borderRadius: 6, zIndex: 0,
+  },
+  timeScroll: { flex: 1 },
+  timeItem: {
+    height: 44, justifyContent: 'center', alignItems: 'center',
+    borderRadius: 6, zIndex: 1,
+  },
+  timeItemSelected: { backgroundColor: '#0f172a', borderRadius: 6 },
+  timeItemText: { fontSize: 15, color: '#475569', fontWeight: '500' },
+  timeItemTextSelected: { color: '#fff', fontWeight: '800' },
+  timeSep: { fontSize: 18, fontWeight: '700', color: '#0f172a', marginHorizontal: 2, marginTop: -8 },
+
+  footer: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 12,
+    borderTopWidth: 1, borderColor: '#f1f5f9',
+  },
+  nowBtn: { paddingVertical: 8, paddingHorizontal: 14 },
+  nowText: { fontSize: 12, fontWeight: '700', color: '#64748b', letterSpacing: 0.5 },
+  okBtn: { backgroundColor: '#0f172a', paddingVertical: 9, paddingHorizontal: 24, borderRadius: 6 },
+  okText: { fontSize: 13, fontWeight: '700', color: '#fff', letterSpacing: 0.5 },
+});
+
+// ─── DateTime Input Field ──────────────────────────────────────────────────────
+function DateTimeField({ deliveryDate, deliveryTime, onChange }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Format display: DD/MM/YYYY HH:MM
+  const displayDate = () => {
+    if (!deliveryDate) return '—';
+    const [y, m, d] = deliveryDate.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
+  return (
+    <View style={dtf.wrapper}>
+      <Text style={dtf.label}>Delivery Date & Time</Text>
+      <TouchableOpacity style={dtf.field} onPress={() => setPickerOpen(true)} activeOpacity={0.75}>
+        <Ionicons name="calendar-outline" size={15} color="#64748b" style={{ marginRight: 8 }} />
+        <Text style={dtf.dateText}>{displayDate()}</Text>
+        <View style={dtf.timePill}>
+          <Ionicons name="time-outline" size={12} color="#0f172a" />
+          <Text style={dtf.timeText}>{deliveryTime || '--:--'}</Text>
+        </View>
+        <Ionicons name="chevron-down" size={13} color="#94a3b8" style={{ marginLeft: 'auto' }} />
+      </TouchableOpacity>
+
+      <DateTimePicker
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onConfirm={(date, time) => onChange(date, time)}
+        initialDate={deliveryDate}
+        initialTime={deliveryTime}
+      />
+    </View>
+  );
+}
+
+const dtf = StyleSheet.create({
+  wrapper: { width: '100%', marginBottom: 4 },
+  label: { fontSize: 11, fontWeight: '600', color: '#64748b', marginBottom: 5, letterSpacing: 0.3 },
+  field: {
+    flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6,
+    paddingVertical: 9, paddingHorizontal: 11,
+    backgroundColor: '#f8fafc',
+  },
+  dateText: { fontSize: 13, color: '#0f172a', fontWeight: '600' },
+  timePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#0f172a', borderRadius: 4,
+    paddingHorizontal: 8, paddingVertical: 3, marginLeft: 10,
+  },
+  timeText: { fontSize: 12, color: '#fff', fontWeight: '700' },
+});
+
+// ─── Radio Button ──────────────────────────────────────────────────────────────
 const RadioButton = ({ label, selected, onSelect }) => (
   <TouchableOpacity style={styles.radioContainer} onPress={onSelect} activeOpacity={0.7}>
     <View style={[styles.radioCircle, selected && styles.radioCircleSelected]}>
@@ -28,7 +433,8 @@ const RadioButton = ({ label, selected, onSelect }) => (
   </TouchableOpacity>
 );
 
-export default function AddOrderScreen({ navigation }) {
+// ─── Main Screen ───────────────────────────────────────────────────────────────
+export default function AddOrderScreen({ onNavigate }) {
   const [categories, setCategories] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [selectedCat, setSelectedCat] = useState(null);
@@ -44,7 +450,13 @@ export default function AddOrderScreen({ navigation }) {
   const [remark, setRemark] = useState('');
   const [orderType, setOrderType] = useState('Vegetarian');
   const [paymentType, setPaymentType] = useState('COD');
-  const [deliveryTime] = useState(new Date().toLocaleString());
+
+  const [deliveryDate, setDeliveryDate] = useState(
+    new Date().toLocaleDateString('en-CA')
+  );
+  const [deliveryTime, setDeliveryTime] = useState(
+    new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
+  );
 
   const [cart, setCart] = useState([]);
   const [deliveryChargeInput, setDeliveryChargeInput] = useState('0');
@@ -85,25 +497,32 @@ export default function AddOrderScreen({ navigation }) {
   const totalAmount = Math.round(subTotal + tax + delivery - discount);
 
   const handlePlaceOrder = async () => {
-    if (cart.length === 0) return Alert.alert('Error', 'Cart is empty');
-    if (!customerName) return Alert.alert('Error', 'Customer Name is required');
+    if (cart.length === 0) {
+      Alert.alert('Error', 'Cart is empty');
+      return;
+    }
+    if (!customerName) {
+      Alert.alert('Error', 'Customer Name is required');
+      return;
+    }
 
     const orderData = {
-      orderNo: orderId,
-      vendorName, customerName, contactNo: mobileNo,
-      trainInfo: trainNo, coach, seat: seat, pnr,
-      orderType, paymentType,
-      remark: remark,
+      orderNo: orderId, vendorName, customerName, contactNo: mobileNo, trainInfo: trainNo, coach,
+      seat, pnr, orderType, paymentType, remark,
       orderDate: new Date().toISOString().split('T')[0],
       orderTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      deliveryDate, deliveryTime,
       items: cart.map(i => ({ name: i.name, quantity: i.quantity, price: i.price })),
-      subTotal, tax, deliveryCharge: delivery, totalAmount,
-      status: 'Active', createdAt: new Date().toISOString()
+      subTotal, tax, deliveryCharge: delivery, totalAmount, status: 'Active',
+      createdAt: new Date().toISOString()
     };
 
-    await addDoc(collection(db, 'orders'), orderData);
-    Alert.alert('Success', 'Order Placed!');
-    navigation.goBack();
+    try {
+      await addDoc(collection(db, 'orders'), orderData);
+      onNavigate('Dashboard');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to place order');
+    }
   };
 
   const renderInput = (label, value, onChange, placeholder, keyboard = 'default', editable = true) => (
@@ -126,11 +545,7 @@ export default function AddOrderScreen({ navigation }) {
       {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
+          <TouchableOpacity onPress={() => onNavigate('Dashboard')} style={styles.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="arrow-back" size={18} color="#64748b" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>New Order</Text>
@@ -166,7 +581,15 @@ export default function AddOrderScreen({ navigation }) {
               {renderInput('Customer Name', customerName, setCustomerName, 'Customer Name')}
               {renderInput('Mobile No', mobileNo, setMobileNo, 'Mobile Number', 'phone-pad')}
               {renderInput('Remark / Special Instructions', remark, setRemark, 'e.g., No onion/garlic')}
-              {renderInput('Delivery Time', deliveryTime, null, '', 'default', false)}
+
+              {/* ── NEW: Date+Time Picker Field (full width) ── */}
+              <View style={{ width: '100%' }}>
+                <DateTimeField
+                  deliveryDate={deliveryDate}
+                  deliveryTime={deliveryTime}
+                  onChange={(date, time) => { setDeliveryDate(date); setDeliveryTime(time); }}
+                />
+              </View>
             </View>
 
             <View style={styles.radioSection}>
@@ -240,7 +663,6 @@ export default function AddOrderScreen({ navigation }) {
               <Text style={styles.cardTitle}>Add Items</Text>
             </View>
             <View style={{ flex: 1, flexDirection: 'row', minHeight: 300 }}>
-              {/* Category Sidebar */}
               <View style={styles.categorySidebar}>
                 <Text style={styles.sidebarHeading}>CATEGORY</Text>
                 <ScrollView showsVerticalScrollIndicator={false}>
@@ -251,15 +673,11 @@ export default function AddOrderScreen({ navigation }) {
                       onPress={() => setSelectedCat(cat.id)}
                       activeOpacity={0.7}
                     >
-                      <Text style={[styles.catText, selectedCat === cat.id && styles.catTextActive]}>
-                        {cat.name}
-                      </Text>
+                      <Text style={[styles.catText, selectedCat === cat.id && styles.catTextActive]}>{cat.name}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
-
-              {/* Items Grid */}
               <View style={styles.itemsPanel}>
                 <Text style={styles.sidebarHeading}>ITEMS</Text>
                 <ScrollView contentContainerStyle={styles.itemGrid} showsVerticalScrollIndicator={false}>
@@ -289,7 +707,6 @@ export default function AddOrderScreen({ navigation }) {
               {renderInput('GST (1–100)%', gstPercent, setGstPercent, '5', 'numeric')}
               {renderInput('Discount (1–100)%', discountPercent, setDiscountPercent, '0', 'numeric')}
             </View>
-
             <View style={styles.totalBar}>
               <Text style={styles.totalLabel}>AMOUNT TO COLLECT</Text>
               <Text style={styles.totalValue}>₹ {totalAmount.toFixed(2)}</Text>
@@ -301,7 +718,7 @@ export default function AddOrderScreen({ navigation }) {
 
       {/* FOOTER */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.cancelBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.cancelBtn} onPress={() => onNavigate('Dashboard')}>
           <Text style={styles.cancelBtnText}>CANCEL</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.saveBtn} onPress={handlePlaceOrder}>
@@ -314,234 +731,110 @@ export default function AddOrderScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  // Header
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 14,
+    backgroundColor: 'white', borderBottomWidth: 1, borderColor: '#e2e8f0',
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   backBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 32, height: 32, borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0',
+    justifyContent: 'center', alignItems: 'center',
   },
   headerTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
   orderIdBadge: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#94a3b8',
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    fontSize: 11, fontWeight: '600', color: '#94a3b8',
+    backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 5, borderWidth: 1, borderColor: '#e2e8f0',
   },
-
   container: { flex: 1 },
   scrollContent: { padding: 20 },
   mainLayout: { flexDirection: isWeb ? 'row' : 'column', flexWrap: 'wrap', gap: 20 },
-
-  // Card
   card: {
-    backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginBottom: 20,
+    backgroundColor: 'white', borderRadius: 8, padding: 20,
+    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20,
   },
   leftCard: { width: isWeb ? '48.5%' : '100%' },
   rightCard: { width: isWeb ? '48.5%' : '100%' },
-
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
   cardTitleDot: { width: 3, height: 16, backgroundColor: '#0f172a', borderRadius: 2 },
   cardTitle: { fontSize: 14, fontWeight: '700', color: '#0f172a', letterSpacing: 0.2 },
   cartCountBadge: {
-    backgroundColor: '#0f172a',
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 4,
+    backgroundColor: '#0f172a', width: 20, height: 20, borderRadius: 10,
+    justifyContent: 'center', alignItems: 'center', marginLeft: 4,
   },
   cartCountText: { color: 'white', fontSize: 10, fontWeight: '800' },
-
-  // Form
   formGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   inputGroup: { width: isWeb ? '30%' : '47%', marginBottom: 4, flexGrow: 1 },
   label: { fontSize: 11, fontWeight: '600', color: '#64748b', marginBottom: 5, letterSpacing: 0.3 },
   input: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 11,
-    fontSize: 13,
-    color: '#0f172a',
-    backgroundColor: '#f8fafc',
+    borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6,
+    paddingVertical: 9, paddingHorizontal: 11, fontSize: 13,
+    color: '#0f172a', backgroundColor: '#f8fafc',
   },
   disabledInput: { backgroundColor: '#f1f5f9', color: '#94a3b8' },
-
-  pickerBorder: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 6,
-    backgroundColor: '#f8fafc',
-    overflow: 'hidden',
-  },
+  pickerBorder: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6, backgroundColor: '#f8fafc', overflow: 'hidden' },
   picker: { height: 40, width: '100%' },
-
   radioSection: { flexDirection: 'row', gap: 24, marginTop: 16, flexWrap: 'wrap' },
   radioGroup: { gap: 8 },
   radioGroupLabel: { fontSize: 11, fontWeight: '600', color: '#64748b', letterSpacing: 0.3 },
   radioRow: { flexDirection: 'row', gap: 16 },
   radioContainer: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  radioCircle: {
-    height: 17,
-    width: 17,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: '#cbd5e1',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  radioCircle: { height: 17, width: 17, borderRadius: 9, borderWidth: 2, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center' },
   radioCircleSelected: { borderColor: '#0f172a' },
   radioInnerCircle: { height: 9, width: 9, borderRadius: 5, backgroundColor: '#0f172a' },
   radioLabel: { fontSize: 13, color: '#64748b' },
   radioLabelSelected: { color: '#0f172a', fontWeight: '600' },
-
-  // Cart Table
   tableHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#f8fafc',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    flexDirection: 'row', backgroundColor: '#f8fafc', paddingVertical: 8, paddingHorizontal: 10,
+    borderRadius: 6, marginBottom: 4, borderWidth: 1, borderColor: '#e2e8f0',
   },
   th: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.7 },
   tableRow: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderColor: '#f1f5f9',
-    alignItems: 'center',
+    flexDirection: 'row', paddingVertical: 10, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderColor: '#f1f5f9', alignItems: 'center',
   },
   cartItemName: { fontSize: 13, color: '#0f172a', fontWeight: '500' },
   cartCell: { fontSize: 13, color: '#334155' },
-  emptyCart: {
-    alignItems: 'center',
-    gap: 8,
-    padding: 32,
-  },
+  emptyCart: { alignItems: 'center', gap: 8, padding: 32 },
   emptyCartText: { color: '#94a3b8', fontSize: 13 },
   qtyBtn: {
-    width: 24,
-    height: 24,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    width: 24, height: 24, borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 4,
+    justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc',
   },
   qtyBtnText: { fontSize: 14, color: '#0f172a', fontWeight: '700', lineHeight: 16 },
   qtyValue: { fontSize: 13, fontWeight: '700', color: '#0f172a', minWidth: 16, textAlign: 'center' },
-
-  // Item Browser
-  categorySidebar: {
-    width: '30%',
-    borderRightWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingRight: 12,
-  },
-  sidebarHeading: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#94a3b8',
-    letterSpacing: 0.8,
-    marginBottom: 10,
-  },
-  catItem: {
-    paddingVertical: 9,
-    paddingHorizontal: 10,
-    borderRadius: 5,
-    marginBottom: 2,
-  },
+  categorySidebar: { width: '30%', borderRightWidth: 1, borderColor: '#e2e8f0', paddingRight: 12 },
+  sidebarHeading: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8, marginBottom: 10 },
+  catItem: { paddingVertical: 9, paddingHorizontal: 10, borderRadius: 5, marginBottom: 2 },
   catItemActive: { backgroundColor: '#0f172a' },
   catText: { fontSize: 13, color: '#64748b', fontWeight: '500' },
   catTextActive: { color: 'white', fontWeight: '700' },
   itemsPanel: { width: '70%', paddingLeft: 14 },
   itemGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  itemBox: {
-    width: '47%',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 6,
-    padding: 10,
-    backgroundColor: 'white',
-  },
+  itemBox: { width: '47%', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6, padding: 10, backgroundColor: 'white' },
   itemName: { fontSize: 12, fontWeight: '500', color: '#0f172a', marginBottom: 8, lineHeight: 16 },
   itemFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   itemPrice: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
   vegDot: { width: 9, height: 9, borderRadius: 5 },
-
-  // Pricing
   totalBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#0f172a',
-    borderRadius: 7,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginTop: 16,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: '#0f172a', borderRadius: 7, paddingHorizontal: 16, paddingVertical: 14, marginTop: 16,
   },
   totalLabel: { fontSize: 11, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8 },
   totalValue: { fontSize: 18, fontWeight: '800', color: 'white' },
-
-  // Footer
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    padding: 16,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderColor: '#e2e8f0',
+    flexDirection: 'row', justifyContent: 'flex-end', gap: 10,
+    padding: 16, backgroundColor: 'white', borderTopWidth: 1, borderColor: '#e2e8f0',
   },
   cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
+    paddingVertical: 10, paddingHorizontal: 20, borderRadius: 6,
+    borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc',
   },
   cancelBtnText: { color: '#64748b', fontWeight: '700', fontSize: 12, letterSpacing: 0.5 },
   saveBtn: {
-    flexDirection: 'row',
-    gap: 7,
-    alignItems: 'center',
-    backgroundColor: '#0f172a',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 6,
+    flexDirection: 'row', gap: 7, alignItems: 'center',
+    backgroundColor: '#0f172a', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 6,
   },
   saveBtnText: { color: 'white', fontWeight: '700', fontSize: 12, letterSpacing: 0.5 },
 });
