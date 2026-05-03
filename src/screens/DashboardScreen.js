@@ -59,12 +59,7 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
 
         <Text style={[styles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>{item.orderNo}</Text>
         
-        {/* 🟢 CHANGED: Now pulls deliveryDate and deliveryTime */}
-        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>
-           {item.deliveryDate 
-            ? new Date(item.deliveryDate).toLocaleDateString('en-GB') 
-            : '—'}
-            </Text>
+        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.deliveryDate || '—'}</Text>
         <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.deliveryTime || '—'}</Text>
         
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>{item.vendorName}</Text>
@@ -288,31 +283,29 @@ export default function DashboardScreen() {
              box-sizing: border-box;
              font-weight: inherit;
           }
+        /* 🟢 FIX: Added strict background-color: #ffffff to both html and body */
+        html {
+            background-color: #ffffff;
+        }
         body {
-  font-family: 'Courier New', monospace;
-
-  width: 70mm;        /* 🔥 EXACT printable width */
-  margin: 0;
-  padding: 6px;   /* 🔥 balanced margin */
-
-  font-size: 11px;
-  line-height: 1.4;
-
-  color: #000;
-  font-weight: 600;
-
-  box-sizing: border-box;
-
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
+             background-color: #ffffff;
+             font-family: 'Courier New', Courier, monospace;
+             width: 72mm; 
+             margin: 0 auto;
+             padding: 10px 16px 16px 10px; 
+             font-size: 12px;
+             color: #000;
+             font-weight: 900;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         .center { text-align: center; }
         .bold { font-weight: bold; }
         .divider { border: none; border-top: 1px dashed #000; margin: 7px 0; }
-        .detail-table { width: 100%; border-collapse: collapse;  table-layout: fixed; }
-        .detail-table tr td { padding: 1px 0; vertical-align: top;   font-size: 11px; }
-        .detail-table tr td:first-child { width: 42%; white-space: nowrap; padding-right: 4px;  }
-        .detail-table tr td:last-child {  width: 58%; text-align: left; word-break: break-word; overflow-wrap: break-word;}
+        .detail-table { width: 100%; border-collapse: collapse; }
+        .detail-table tr td { padding: 2px 0; vertical-align: top; }
+        .detail-table tr td:first-child { white-space: nowrap; padding-right: 8px; }
+        .detail-table tr td:last-child { text-align: right; word-break: break-word; }
         .items-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
         .items-head th {
           font-weight: bold;
@@ -322,12 +315,12 @@ export default function DashboardScreen() {
           font-size: 12px;
         }
         .items-head th:first-child { text-align: left; }
-        .items-head th:last-child { text-align: right; width: 36px; }
+        .items-head th:last-child { text-align: right; width: 40px; }
         .items-table tbody tr td { padding: 3px 2px; vertical-align: top; font-size: 12px; }
-        .items-table tbody tr td:last-child { text-align: right; width: 36px; }
+        .items-table tbody tr td:last-child { text-align: right; width: 40px; }
         .totals-table { width: 100%; border-collapse: collapse; }
         .totals-table td { padding: 2px 0; font-size: 12px; }
-        .totals-table td:last-child { text-align: right; }
+        .totals-table td:last-child { text-align: right; padding-right: 6px; } 
         .totals-table tr.total-row td {
           font-weight: bold;
           font-size: 13px;
@@ -356,9 +349,8 @@ export default function DashboardScreen() {
           flex: 1;
           text-align: center;
           padding: 8px 4px;
-          font-size: 18px;
+          font-size: 16px; 
           font-weight: 900;
-          letter-spacing: 1px;
         }
         .train-cell.divider-right {
           border-right: 2.5px solid #000;
@@ -379,12 +371,9 @@ export default function DashboardScreen() {
       <table class="detail-table">
         <tr><td>Order No.</td><td>${order.orderNo || order.pnr || 'N/A'}</td></tr>
         <tr><td>Vendor</td><td>${order.vendorName || 'N/A'}</td></tr>
-        
-        <!-- 🟢 CHANGED: Prints Delivery Date and Time on Receipt -->
-        <tr><td>Delivery Date</td><td>${order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }): '—'}</td></tr>
-        <tr><td>Delivery Time</td><td>${order.deliveryTime || new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })}</td></tr>
-        
-        <tr><td>Customer Name</td><td>${order.customerName || 'Customer'}</td></tr>
+        <tr><td>Date</td><td>${order.deliveryDate || new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</td></tr>
+        <tr><td>Time</td><td>${order.deliveryTime || new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })}</td></tr>
+        <tr><td>Customer</td><td>${order.customerName || 'Customer'}</td></tr>
         <tr><td>Mobile</td><td>${order.contactNo || 'N/A'}</td></tr>
       </table>
 
@@ -502,11 +491,8 @@ export default function DashboardScreen() {
           <View style={{ width: 36 }} />
           <Text style={[styles.col, { flex: 0.8 }]}>STATUS</Text>
           <Text style={[styles.col, { flex: 1.1 }]}>ORDER NO.</Text>
-          
-          {/* 🟢 CHANGED: Updated table headers */}
           <Text style={[styles.col, { flex: 1.0 }]}>DEL. DATE</Text>
           <Text style={[styles.col, { flex: 0.8 }]}>DEL. TIME</Text>
-          
           <Text style={[styles.col, { flex: 1.2 }]}>VENDOR</Text>
           <Text style={[styles.col, { flex: 1.2 }]}>TRAIN</Text>
           <Text style={[styles.col, { flex: 0.9 }]}>PAYMENT</Text>
@@ -539,7 +525,6 @@ export default function DashboardScreen() {
         )}
       </View>
 
-      {/* ── Status Dropdown ── */}
       <Modal visible={statusModalVisible} transparent animationType="fade">
         <TouchableOpacity
           style={styles.dropdownBackdrop}
@@ -573,7 +558,6 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Assign Executive Dropdown ── */}
       <Modal visible={assignModalVisible} transparent animationType="fade">
         <TouchableOpacity
           style={styles.dropdownBackdrop}
@@ -608,7 +592,6 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── Admin / Settings Modal ── */}
       <Modal visible={settingsVisible} transparent animationType="fade" onRequestClose={() => setSettingsVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
