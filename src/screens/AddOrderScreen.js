@@ -657,12 +657,12 @@ export default function AddOrderScreen({ onNavigate }) {
           </View>
 
           {/* SECTION 3: Add Items */}
-          <View style={[styles.card, styles.leftCard, { minHeight: 360 }]}>
+          <View style={[styles.card, styles.leftCard, { height: 420 }]}>
             <View style={styles.cardTitleRow}>
               <View style={styles.cardTitleDot} />
               <Text style={styles.cardTitle}>Add Items</Text>
             </View>
-            <View style={{ flex: 1, flexDirection: 'row', minHeight: 300 }}>
+            <View style={{ flexDirection: 'row', height: 320 }}>
               <View style={styles.categorySidebar}>
                 <Text style={styles.sidebarHeading}>CATEGORY</Text>
                 <ScrollView showsVerticalScrollIndicator={false}>
@@ -681,15 +681,25 @@ export default function AddOrderScreen({ onNavigate }) {
               <View style={styles.itemsPanel}>
                 <Text style={styles.sidebarHeading}>ITEMS</Text>
                 <ScrollView contentContainerStyle={styles.itemGrid} showsVerticalScrollIndicator={false}>
-                  {menuItems.filter(m => m.categoryId === selectedCat).map(item => (
-                    <TouchableOpacity key={item.id} style={styles.itemBox} onPress={() => addToCart(item)} activeOpacity={0.75}>
-                      <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-                      <View style={styles.itemFooter}>
-                        <Text style={styles.itemPrice}>₹{item.price}</Text>
-                        <View style={[styles.vegDot, { backgroundColor: item.isVeg ? '#16a34a' : '#dc2626' }]} />
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+                  {menuItems.filter(m => m.categoryId === selectedCat).map(item => {
+  const inCart = cart.some(p => p.id === item.id);
+  return (
+    <TouchableOpacity
+      key={item.id}
+      style={[styles.itemBox, inCart && styles.itemBoxSelected]}
+      onPress={() => addToCart(item)}
+      activeOpacity={0.75}
+    >
+      <Text style={[styles.itemName, inCart && styles.itemNameSelected]} numberOfLines={2}>
+        {item.name}
+      </Text>
+      <View style={styles.itemFooter}>
+        <Text style={[styles.itemPrice, inCart && styles.itemPriceSelected]}>₹{item.price}</Text>
+        <View style={[styles.vegDot, { backgroundColor: item.isVeg ? '#16a34a' : '#dc2626' }]} />
+      </View>
+    </TouchableOpacity>
+  );
+})}
                 </ScrollView>
               </View>
             </View>
@@ -804,29 +814,26 @@ const styles = StyleSheet.create({
   },
   qtyBtnText: { fontSize: 14, color: '#0f172a', fontWeight: '700', lineHeight: 16 },
   qtyValue: { fontSize: 13, fontWeight: '700', color: '#0f172a', minWidth: 16, textAlign: 'center' },
-  categorySidebar: { width: '30%', borderRightWidth: 1, borderColor: '#e2e8f0', paddingRight: 12 },
-  sidebarHeading: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8, marginBottom: 10 },
+  categorySidebar: { width: '30%', flex: 1, borderRightWidth: 1, borderColor: '#e2e8f0', paddingRight: 12 },
+  sidebarHeading: { fontSize: 12, fontWeight: '700', color: '#0f172a', letterSpacing: 0.8, marginBottom: 10 },
   catItem: { paddingVertical: 9, paddingHorizontal: 10, borderRadius: 5, marginBottom: 2 },
   catItemActive: { backgroundColor: '#0f172a' },
   catText: { fontSize: 13, color: '#64748b', fontWeight: '500' },
   catTextActive: { color: 'white', fontWeight: '700' },
-  itemsPanel: { width: '70%', paddingLeft: 14 },
+  itemsPanel: { width: '70%', flex: 1, paddingLeft: 14 },
   itemGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
   itemBox: { width: '47%', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6, padding: 10, backgroundColor: 'white' },
+  itemBoxSelected: { backgroundColor: '#38bdf8', borderColor: '#0ea5e9', },
+  itemNameSelected: { color: '#ffffff', fontWeight: '700', },
+  itemPriceSelected: { color: '#ffffff', },
   itemName: { fontSize: 12, fontWeight: '500', color: '#0f172a', marginBottom: 8, lineHeight: 16 },
   itemFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   itemPrice: { fontSize: 13, fontWeight: '700', color: '#0f172a' },
   vegDot: { width: 9, height: 9, borderRadius: 5 },
-  totalBar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#0f172a', borderRadius: 7, paddingHorizontal: 16, paddingVertical: 14, marginTop: 16,
-  },
+  totalBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0f172a', borderRadius: 7, paddingHorizontal: 16, paddingVertical: 14, marginTop: 16, },
   totalLabel: { fontSize: 11, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8 },
   totalValue: { fontSize: 18, fontWeight: '800', color: 'white' },
-  footer: {
-    flexDirection: 'row', justifyContent: 'flex-end', gap: 10,
-    padding: 16, backgroundColor: 'white', borderTopWidth: 1, borderColor: '#e2e8f0',
-  },
+  footer: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, padding: 16, backgroundColor: 'white', borderTopWidth: 1, borderColor: '#e2e8f0', },
   cancelBtn: {
     paddingVertical: 10, paddingHorizontal: 20, borderRadius: 6,
     borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc',
