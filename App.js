@@ -40,7 +40,7 @@ export default function App() {
     switch (currentScreen) {
       case 'Dashboard': return <DashboardScreen />;
       case 'Daily Business': return <DailyBusinessScreen />;
-      case 'Add Order': return <AddOrderScreen />;
+      case 'Add Order': return <AddOrderScreen onNavigate={setCurrentScreen} />;
       case 'Menu': return <MenuScreen />;
       case 'Reports': return <ReportsScreen />;
       case 'Delivered': return <FilteredOrdersScreen statusFilter="Completed" title="Delivered Orders" />;
