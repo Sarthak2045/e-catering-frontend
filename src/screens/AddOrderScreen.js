@@ -657,12 +657,12 @@ export default function AddOrderScreen({ onNavigate }) {
           </View>
 
           {/* SECTION 3: Add Items */}
-          <View style={[styles.card, styles.leftCard, { minHeight: 360 }]}>
+          <View style={[styles.card, styles.leftCard, { height: 420 }]}>
             <View style={styles.cardTitleRow}>
               <View style={styles.cardTitleDot} />
               <Text style={styles.cardTitle}>Add Items</Text>
             </View>
-            <View style={{ flex: 1, flexDirection: 'row', minHeight: 300 }}>
+            <View style={{ flexDirection: 'row', height: 320 }}>
               <View style={styles.categorySidebar}>
                 <Text style={styles.sidebarHeading}>CATEGORY</Text>
                 <ScrollView showsVerticalScrollIndicator={false}>
@@ -804,13 +804,13 @@ const styles = StyleSheet.create({
   },
   qtyBtnText: { fontSize: 14, color: '#0f172a', fontWeight: '700', lineHeight: 16 },
   qtyValue: { fontSize: 13, fontWeight: '700', color: '#0f172a', minWidth: 16, textAlign: 'center' },
-  categorySidebar: { width: '30%', borderRightWidth: 1, borderColor: '#e2e8f0', paddingRight: 12 },
-  sidebarHeading: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8, marginBottom: 10 },
+  categorySidebar: { width: '30%', flex: 1, borderRightWidth: 1, borderColor: '#e2e8f0', paddingRight: 12 },
+  sidebarHeading: { fontSize: 12, fontWeight: '700', color: '#0f172a', letterSpacing: 0.8, marginBottom: 10 },
   catItem: { paddingVertical: 9, paddingHorizontal: 10, borderRadius: 5, marginBottom: 2 },
   catItemActive: { backgroundColor: '#0f172a' },
   catText: { fontSize: 13, color: '#64748b', fontWeight: '500' },
   catTextActive: { color: 'white', fontWeight: '700' },
-  itemsPanel: { width: '70%', paddingLeft: 14 },
+  itemsPanel: { width: '70%', flex: 1, paddingLeft: 14 },
   itemGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
   itemBox: { width: '47%', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 6, padding: 10, backgroundColor: 'white' },
   itemName: { fontSize: 12, fontWeight: '500', color: '#0f172a', marginBottom: 8, lineHeight: 16 },
