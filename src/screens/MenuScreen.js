@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, SectionList, StyleSheet, Modal } from 'react-native';
-import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
@@ -10,16 +10,29 @@ export default function MenuScreen() {
   const [menuItems, setMenuItems]       = useState([]);
   const [search, setSearch]             = useState('');
 
-  // Category modal
+  // Add Category modal
   const [catModalVisible, setCatModalVisible]   = useState(false);
   const [newCategoryName, setNewCategoryName]   = useState('');
 
-  // Menu Item modal
+  // Add Menu Item modal
   const [itemModalVisible, setItemModalVisible] = useState(false);
   const [newItemName, setNewItemName]           = useState('');
   const [newItemPrice, setNewItemPrice]         = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [isVeg, setIsVeg]                       = useState(true);
+
+  // Edit Item modal
+  const [editItemModalVisible, setEditItemModalVisible] = useState(false);
+  const [editingItem, setEditingItem]                   = useState(null);
+  const [editItemName, setEditItemName]                 = useState('');
+  const [editItemPrice, setEditItemPrice]               = useState('');
+  const [editItemCategory, setEditItemCategory]         = useState('');
+  const [editItemIsVeg, setEditItemIsVeg]               = useState(true);
+
+  // Edit Category modal
+  const [editCatModalVisible, setEditCatModalVisible] = useState(false);
+  const [editingCat, setEditingCat]                   = useState(null);
+  const [editCatName, setEditCatName]                 = useState('');
 
   // ── Firebase ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -38,39 +51,78 @@ export default function MenuScreen() {
 
   // ── Add Category ──────────────────────────────────────────────────────────
   const handleAddCategory = async () => {
-  if (!newCategoryName.trim()) return;   // silent validation
-  await addDoc(collection(db, 'categories'), { name: newCategoryName.trim() });
-  setNewCategoryName('');
-  setCatModalVisible(false);
-};
+    if (!newCategoryName.trim()) return;
+    await addDoc(collection(db, 'categories'), { name: newCategoryName.trim() });
+    setNewCategoryName('');
+    setCatModalVisible(false);
+  };
+
   // ── Add Menu Item ─────────────────────────────────────────────────────────
- const handleAddItem = async () => {
-  if (!newItemName || !newItemPrice || !selectedCategory) return;  // silent
-  await addDoc(collection(db, 'menuItems'), {
-    name: newItemName,
-    price: parseFloat(newItemPrice),
-    categoryId: selectedCategory,
-    isVeg: isVeg,
-  });
-  setItemModalVisible(false);
-  setNewItemName('');
-  setNewItemPrice('');
-  setIsVeg(true);
-};
+  const handleAddItem = async () => {
+    if (!newItemName || !newItemPrice || !selectedCategory) return;
+    await addDoc(collection(db, 'menuItems'), {
+      name: newItemName,
+      price: parseFloat(newItemPrice),
+      categoryId: selectedCategory,
+      isVeg: isVeg,
+    });
+    setItemModalVisible(false);
+    setNewItemName('');
+    setNewItemPrice('');
+    setIsVeg(true);
+  };
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = async (col, id) => {
-  try {
-    await deleteDoc(doc(db, col, id));
-  } catch (e) {
-    console.error('Delete failed:', e);
-  }
-};
+    try {
+      await deleteDoc(doc(db, col, id));
+    } catch (e) {
+      console.error('Delete failed:', e);
+    }
+  };
 
- const openItemModal = () => {
-  if (categories.length === 0) return;  // silent guard
-  setItemModalVisible(true);
-};
+  // ── Edit Item ─────────────────────────────────────────────────────────────
+  const handleEditItem = (item) => {
+    setEditingItem(item);
+    setEditItemName(item.name);
+    setEditItemPrice(String(item.price));
+    setEditItemCategory(item.categoryId);
+    setEditItemIsVeg(item.isVeg !== false);
+    setEditItemModalVisible(true);
+  };
+
+  const handleSaveItem = async () => {
+    if (!editItemName.trim() || !editItemPrice || !editingItem) return;
+    await updateDoc(doc(db, 'menuItems', editingItem.id), {
+      name: editItemName.trim(),
+      price: parseFloat(editItemPrice),
+      categoryId: editItemCategory,
+      isVeg: editItemIsVeg,
+    });
+    setEditItemModalVisible(false);
+    setEditingItem(null);
+  };
+
+  // ── Edit Category ─────────────────────────────────────────────────────────
+  const handleEditCategory = (cat) => {
+    setEditingCat(cat);
+    setEditCatName(cat.name);
+    setEditCatModalVisible(true);
+  };
+
+  const handleSaveCategory = async () => {
+    if (!editCatName.trim() || !editingCat) return;
+    await updateDoc(doc(db, 'categories', editingCat.id), {
+      name: editCatName.trim(),
+    });
+    setEditCatModalVisible(false);
+    setEditingCat(null);
+  };
+
+  const openItemModal = () => {
+    if (categories.length === 0) return;
+    setItemModalVisible(true);
+  };
 
   // ── Build category-based sections (sorted A→Z by category name) ──────────
   const buildSections = () => {
@@ -78,7 +130,6 @@ export default function MenuScreen() {
       item.name?.toLowerCase().includes(search.toLowerCase())
     );
 
-    // Group by category name
     const grouped = {};
     filtered.forEach(item => {
       const catName = categories.find(c => c.id === item.categoryId)?.name || 'Unknown';
@@ -86,7 +137,6 @@ export default function MenuScreen() {
       grouped[catName].push(item);
     });
 
-    // Sort category names A→Z and build SectionList data format
     return Object.keys(grouped)
       .sort((a, b) => a.localeCompare(b))
       .map(catName => ({ title: catName, data: grouped[catName] }));
@@ -94,7 +144,6 @@ export default function MenuScreen() {
 
   const sections = buildSections();
 
-  // Compute global serial number across all sections
   const buildSerialMap = () => {
     const map = {};
     let counter = 1;
@@ -162,15 +211,25 @@ export default function MenuScreen() {
           stickySectionHeadersEnabled={true}
 
           // ── Category Divider Header ──
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionCategoryBadge}>
-                <Text style={styles.sectionCategoryText}>{section.title}</Text>
+          renderSectionHeader={({ section }) => {
+            const cat = categories.find(c => c.name === section.title);
+            return (
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionCategoryBadge}>
+                  <Text style={styles.sectionCategoryText}>{section.title}</Text>
+                </View>
+                <View style={styles.sectionDividerLine} />
+                <Text style={styles.sectionCount}>
+                  {section.data.length} item{section.data.length !== 1 ? 's' : ''}
+                </Text>
+                {cat && (
+                  <TouchableOpacity style={styles.catEditBtn} onPress={() => handleEditCategory(cat)}>
+                    <Ionicons name="pencil" size={12} color="#475569" />
+                  </TouchableOpacity>
+                )}
               </View>
-              <View style={styles.sectionDividerLine} />
-              <Text style={styles.sectionCount}>{section.data.length} item{section.data.length !== 1 ? 's' : ''}</Text>
-            </View>
-          )}
+            );
+          }}
 
           // ── Row ──
           renderItem={({ item, index }) => {
@@ -187,7 +246,7 @@ export default function MenuScreen() {
                   <View style={[styles.vegDot, { backgroundColor: veg ? '#16a34a' : '#dc2626' }]} />
                 </View>
                 <View style={[styles.tdCell, { flex: 1.2, gap: 8, justifyContent: 'center' }]}>
-                  <TouchableOpacity style={styles.editBtn}>
+                  <TouchableOpacity style={styles.editBtn} onPress={() => handleEditItem(item)}>
                     <Ionicons name="pencil" size={13} color="white" />
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -317,6 +376,116 @@ export default function MenuScreen() {
         </View>
       </Modal>
 
+      {/* ── Edit Menu Item Modal ── */}
+      <Modal visible={editItemModalVisible} transparent animationType="fade" onRequestClose={() => setEditItemModalVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modalCard, { maxWidth: 500 }]}>
+            <View style={styles.modalTop}>
+              <Text style={styles.modalTitle}>Edit Menu Item</Text>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => { setEditItemModalVisible(false); setEditingItem(null); }}>
+                <Text style={styles.closeBtnText}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.divider} />
+
+            <Text style={styles.fieldLabel}>Category</Text>
+            <View style={styles.pickerWrap}>
+              <Picker
+                selectedValue={editItemCategory}
+                onValueChange={(v) => setEditItemCategory(v)}
+                style={styles.picker}
+              >
+                {categories.map(cat => (
+                  <Picker.Item key={cat.id} label={cat.name} value={cat.id} />
+                ))}
+              </Picker>
+            </View>
+
+            <View style={styles.radioRow}>
+              <TouchableOpacity style={styles.radioOption} onPress={() => setEditItemIsVeg(true)}>
+                <View style={[styles.radioOuter, editItemIsVeg && styles.radioOuterActive]}>
+                  {editItemIsVeg && <View style={styles.radioInner} />}
+                </View>
+                <Text style={styles.radioLabel}>Vegetarian</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.radioOption} onPress={() => setEditItemIsVeg(false)}>
+                <View style={[styles.radioOuter, !editItemIsVeg && styles.radioOuterActive]}>
+                  {!editItemIsVeg && <View style={styles.radioInner} />}
+                </View>
+                <Text style={styles.radioLabel}>Non Vegetarian</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.fieldLabel}>Item Name</Text>
+            <TextInput
+              style={styles.fieldInput}
+              placeholder="Item Name"
+              placeholderTextColor="#b0b8c9"
+              value={editItemName}
+              onChangeText={setEditItemName}
+            />
+
+            <Text style={styles.fieldLabel}>Item Price</Text>
+            <TextInput
+              style={[styles.fieldInput, { width: '50%' }]}
+              placeholder="Item Price"
+              placeholderTextColor="#b0b8c9"
+              keyboardType="numeric"
+              value={editItemPrice}
+              onChangeText={setEditItemPrice}
+            />
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setEditItemModalVisible(false); setEditingItem(null); }}>
+                <Text style={styles.cancelBtnText}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.addBtnDark, (!editItemName.trim() || !editItemPrice) && styles.addBtnDisabled]}
+                onPress={handleSaveItem}
+                disabled={!editItemName.trim() || !editItemPrice}
+              >
+                <Text style={styles.addBtnDarkText}>SAVE</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Edit Category Modal ── */}
+      <Modal visible={editCatModalVisible} transparent animationType="fade" onRequestClose={() => setEditCatModalVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalTop}>
+              <Text style={styles.modalTitle}>Edit Category</Text>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => { setEditCatModalVisible(false); setEditingCat(null); }}>
+                <Text style={styles.closeBtnText}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.divider} />
+            <Text style={styles.fieldLabel}>Category Name</Text>
+            <TextInput
+              style={styles.fieldInput}
+              placeholder="Category Name"
+              placeholderTextColor="#b0b8c9"
+              value={editCatName}
+              onChangeText={setEditCatName}
+            />
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setEditCatModalVisible(false); setEditingCat(null); }}>
+                <Text style={styles.cancelBtnText}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.addBtn, !editCatName.trim() && styles.addBtnDisabled]}
+                onPress={handleSaveCategory}
+                disabled={!editCatName.trim()}
+              >
+                <Text style={styles.addBtnText}>SAVE</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }
@@ -382,6 +551,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#94a3b8',
     letterSpacing: 0.3,
+  },
+  catEditBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // Veg dot
