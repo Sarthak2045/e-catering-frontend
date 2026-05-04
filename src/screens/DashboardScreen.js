@@ -13,10 +13,9 @@ const screenWidth = Dimensions.get('window').width;
 
 let isShiftStarted = true;
 
-const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }) => {
+const ExpandableOrderRow = ({ item, onPrint, onAssign, isPrinted }) => {
   const [expanded, setExpanded] = useState(false);
   const assignBtnRef = useRef(null);
-  const statusBtnRef = useRef(null);
 
   const isAssigned = !!item.assignedExecutiveName;
 
@@ -35,12 +34,6 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
   const handleAssignPress = () => {
     assignBtnRef.current?.measure((fx, fy, width, height, px, py) => {
       onAssign(item, { x: px, y: py, width, height });
-    });
-  };
-
-  const handleStatusPress = () => {
-    statusBtnRef.current?.measure((fx, fy, width, height, px, py) => {
-      onEditStatus(item, { x: px, y: py, width, height });
     });
   };
 
@@ -88,10 +81,6 @@ const ExpandableOrderRow = ({ item, onPrint, onEditStatus, onAssign, isPrinted }
               </View>
             )}
           </View>
-
-          <TouchableOpacity ref={statusBtnRef} style={styles.iconBtn} onPress={handleStatusPress}>
-            <Ionicons name="create-outline" size={16} color="#475569" />
-          </TouchableOpacity>
 
           <View style={{ position: 'relative' }}>
             <TouchableOpacity
@@ -428,6 +417,9 @@ export default function DashboardScreen() {
           iframe.contentWindow.focus();
           iframe.contentWindow.print();
           setPrintedOrders(prev => new Set([...prev, order.id]));
+          // ✅ Auto-complete order after printing
+          updateDoc(doc(db, 'orders', order.id), { status: 'Completed' })
+          .catch(err => console.error('Status update failed:', err));   
           setTimeout(() => { document.body.removeChild(iframe); }, 1000);
         }, 200);
       } else {
@@ -502,7 +494,6 @@ export default function DashboardScreen() {
               <ExpandableOrderRow
                 item={item}
                 onPrint={handlePrint}
-                onEditStatus={openStatusModal}
                 onAssign={openAssignModal}
                 isPrinted={printedOrders.has(item.id)}
               />
@@ -512,39 +503,6 @@ export default function DashboardScreen() {
           />
         )}
       </View>
-
-      <Modal visible={statusModalVisible} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.dropdownBackdrop}
-          activeOpacity={1}
-          onPress={() => setStatusModalVisible(false)}
-        >
-          <View
-            style={[
-              styles.dropdownContainer,
-              { top: dropdownPos.y + dropdownPos.height + 6, left: dropdownPos.x - 160 }
-            ]}
-          >
-            <Text style={styles.dropdownTitle}>UPDATE STATUS</Text>
-
-            <TouchableOpacity
-              style={[styles.dropdownItem, { borderLeftColor: '#16a34a' }]}
-              onPress={() => handleUpdateStatus('Completed')}
-            >
-              <Ionicons name="checkmark-circle-outline" size={16} color="#16a34a" />
-              <Text style={[styles.dropdownItemText, { color: '#16a34a' }]}>Mark as Delivered</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.dropdownItem, { borderLeftColor: '#dc2626' }]}
-              onPress={() => handleUpdateStatus('Cancelled')}
-            >
-              <Ionicons name="close-circle-outline" size={16} color="#dc2626" />
-              <Text style={[styles.dropdownItemText, { color: '#dc2626' }]}>Cancel Order</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
 
       <Modal visible={assignModalVisible} transparent animationType="fade">
         <TouchableOpacity
