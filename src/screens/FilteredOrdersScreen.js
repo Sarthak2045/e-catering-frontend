@@ -1,17 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ActivityIndicator,
-  Platform, TouchableOpacity, TextInput, ScrollView
+  Platform, TouchableOpacity, TextInput, ScrollView, Modal
 } from 'react-native';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, updateDoc, doc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { db } from '../firebaseConfig';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Status options for the dropdown
+// ─────────────────────────────────────────────────────────────────────────────
+const STATUS_OPTIONS = ['Active', 'Confirmed', 'Cancelled', 'Undelivered', 'Pending'];
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Expandable Row — mirrors DashboardScreen's ExpandableOrderRow exactly
 // ─────────────────────────────────────────────────────────────────────────────
-const ExpandableOrderRow = ({ item }) => {
+const ExpandableOrderRow = ({ item, onUpdateStatus }) => {
   const [expanded, setExpanded] = useState(false);
+  const [dropdownVisible, setDropdownVisible] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ x: 0, y: 0 });
+  const editBtnRef = React.useRef(null);
 
   const isCancelled = item.status === 'Cancelled';
   const isCompleted = item.status === 'Completed';
@@ -20,30 +28,37 @@ const ExpandableOrderRow = ({ item }) => {
   const badgeTxt    = isCancelled ? '#dc2626'  : isCompleted ? '#16a34a'  : '#b45309';
   const badgeBorder = isCancelled ? '#fecaca'  : isCompleted ? '#bbf7d0'  : '#fde68a';
 
- const codTypes        = ['COD', 'CASH', 'CASH_ON_DELIVERY'];
- const isCOD           = codTypes.includes((item.paymentType || '').toUpperCase().replace(/\s+/g, '_'));
- const paymentColor    = isCOD ? '#b45309' : '#0f766e';
- const paymentLabel    = isCOD ? 'COD' : 'ONLINE';
- const amountToCollect = isCOD ? (item.totalAmount || 0) : 0;
+  const codTypes        = ['COD', 'CASH', 'CASH_ON_DELIVERY'];
+  const isCOD           = codTypes.includes((item.paymentType || '').toUpperCase().replace(/\s+/g, '_'));
+  const paymentColor    = isCOD ? '#b45309' : '#0f766e';
+  const paymentLabel    = isCOD ? 'COD' : 'ONLINE';
+  const amountToCollect = isCOD ? (item.totalAmount || 0) : 0;
+
+  const handleStatusSelect = (newStatus) => {
+    setDropdownVisible(false);
+    onUpdateStatus(item, newStatus);
+  };
+
+  const openDropdown = (e) => {
+    e.stopPropagation();
+    editBtnRef.current?.measure((fx, fy, width, height, px, py) => {
+      setDropdownPos({ x: px - 148 + width, y: py + height + 4 });
+      setDropdownVisible(true);
+    });
+  };
 
   return (
     <View style={styles.cardContainer}>
       {/* ── Collapsed / summary row ── */}
-      <TouchableOpacity
+     <TouchableOpacity
         style={[styles.tableRow, expanded && styles.tableRowExpanded]}
         onPress={() => setExpanded(!expanded)}
         activeOpacity={0.85}
       >
-        {/* Chevron */}
         <View style={{ width: 36, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={14}
-            color="#94a3b8"
-          />
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" />
         </View>
 
-        {/* Status badge */}
         <View style={{ flex: 0.8 }}>
           <View style={[styles.badge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
             <Text style={{ fontSize: 9, fontWeight: '700', color: badgeTxt, letterSpacing: 0.5 }}>
@@ -52,24 +67,12 @@ const ExpandableOrderRow = ({ item }) => {
           </View>
         </View>
 
-        {/* Order No */}
-        <Text style={[styles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>
-          {item.orderNo}
+        <Text style={[styles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>{item.orderNo}</Text>
+        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>
+          {item.deliveryDate ? new Date(item.deliveryDate).toLocaleDateString('en-GB') : '—'}
         </Text>
-
-        {/* Date */}
-       <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>
-  {item.deliveryDate 
-    ? new Date(item.deliveryDate).toLocaleDateString('en-GB') 
-    : '—'}
-</Text>
         <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.deliveryTime || '—'}</Text>
-        {/* Vendor */}
-        <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>
-          {item.vendorName}
-        </Text>
-
-        {/* Train / Coach / Seat */}
+        <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>{item.vendorName}</Text>
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={2}>
           {item.trainInfo || 'N/A'}{' '}
           <Text style={{ color: '#dc2626', fontWeight: '700' }}>
@@ -77,37 +80,78 @@ const ExpandableOrderRow = ({ item }) => {
           </Text>
         </Text>
 
-        {/* Payment tag */}
         <View style={{ flex: 0.9 }}>
           <Text style={[styles.paymentTag, { color: paymentColor, borderColor: paymentColor }]}>
-             {paymentLabel}
+            {paymentLabel}
           </Text>
         </View>
 
-        {/* Delivery executive (read-only indicator, no action buttons needed on history screens) */}
         <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={[
-            styles.dotIndicator,
-            { backgroundColor: item.assignedExecutiveName ? '#16a34a' : '#cbd5e1' }
-          ]} />
+          <View style={[styles.dotIndicator, { backgroundColor: item.assignedExecutiveName ? '#16a34a' : '#cbd5e1' }]} />
           <Text
-            style={[
-              styles.cell,
-              {
-                fontSize: 12,
-                fontWeight: '700',
-                flex: 1,
-                color: item.assignedExecutiveName ? '#16a34a' : '#94a3b8',
-              }
-            ]}
+            style={[styles.cell, { fontSize: 12, fontWeight: '700', flex: 1, color: item.assignedExecutiveName ? '#16a34a' : '#94a3b8' }]}
             numberOfLines={1}
           >
             {item.assignedExecutiveName || 'Not Assigned'}
           </Text>
+
+          {/* Edit button — ref attached for measure() */}
+          <TouchableOpacity
+            ref={editBtnRef}
+            style={styles.editBtn}
+            onPress={openDropdown}
+          >
+            <Ionicons name="create-outline" size={16} color="#0f172a" />
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
 
-      {/* ── Expanded detail panel — identical to Dashboard's 3-column layout ── */}
+      {/* ── Modal Dropdown — renders above ALL layers ── */}
+      <Modal
+        visible={dropdownVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDropdownVisible(false)}
+      >
+        {/* Full-screen backdrop */}
+        <TouchableOpacity
+          style={{ flex: 1 }}
+          activeOpacity={1}
+          onPress={() => setDropdownVisible(false)}
+        >
+          {/* Dropdown positioned at measured coords */}
+          <View
+            style={[styles.dropdownMenu, { position: 'absolute', top: dropdownPos.y, left: dropdownPos.x }]}
+            // Prevent backdrop press from firing when tapping inside menu
+            onStartShouldSetResponder={() => true}
+          >
+            <Text style={styles.dropdownTitle}>Change Status</Text>
+            {STATUS_OPTIONS.map((status) => (
+              <TouchableOpacity
+                key={status}
+                style={[styles.dropdownItem, item.status === status && styles.dropdownItemActive]}
+                onPress={() => handleStatusSelect(status)}
+              >
+                <View style={[styles.dropdownDot, {
+                  backgroundColor:
+                    status === 'Active'      ? '#f59e0b' :
+                    status === 'Confirmed'   ? '#3b82f6' :
+                    status === 'Cancelled'   ? '#dc2626' :
+                    status === 'Undelivered' ? '#f97316' : '#8b5cf6',
+                }]} />
+                <Text style={[styles.dropdownItemText, item.status === status && styles.dropdownItemTextActive]}>
+                  {status}
+                </Text>
+                {item.status === status && (
+                  <Ionicons name="checkmark" size={14} color="#0f172a" style={{ marginLeft: 'auto' }} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Expanded detail panel ── */}
       {expanded && (
         <View style={styles.expandedContent}>
           <View style={styles.expandedLayout}>
@@ -195,6 +239,16 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
   const [loading, setLoading]             = useState(true);
   const [searchQuery, setSearchQuery]     = useState('');
 
+  const handleUpdateStatus = async (order, newStatus) => {
+    try {
+      await updateDoc(doc(db, 'orders', order.id), {
+        status: newStatus
+      });
+    } catch (err) {
+      console.log("Status update failed", err);
+    }
+  };
+
   useEffect(() => {
     const q = query(collection(db, 'orders'), where('status', '==', statusFilter));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -269,7 +323,7 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
       {/* ── Table container ── */}
       <View style={styles.tableContainer}>
 
-        {/* Table header — same columns as Dashboard */}
+        {/* Table header */}
         <View style={styles.tableHeader}>
           <View style={{ width: 36 }} />
           <Text style={[styles.col, { flex: 0.8 }]}>STATUS</Text>
@@ -294,7 +348,9 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
           <FlatList
             data={filteredOrders}
             keyExtractor={item => item.id}
-            renderItem={({ item }) => <ExpandableOrderRow item={item} />}
+            renderItem={({ item }) => (
+              <ExpandableOrderRow item={item} onUpdateStatus={handleUpdateStatus} />
+            )}
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingBottom: 50, flexGrow: 1 }}
             showsVerticalScrollIndicator={false}
@@ -306,7 +362,7 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Styles — mirrors DashboardScreen's stylesheet 1-to-1
+// Styles
 // ─────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
@@ -388,7 +444,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
   },
   tableRowExpanded: { backgroundColor: '#f8fafc' },
-  cell: { fontSize: 13, color: '#334155', fontWeight: '700'},
+  cell: { fontSize: 13, color: '#334155', fontWeight: '700' },
 
   // Badges & tags
   badge: {
@@ -418,6 +474,69 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   emptyStateText: { fontSize: 14, color: '#94a3b8' },
+
+  // Edit button
+  editBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownMenu: {
+  width: 180,
+  backgroundColor: 'white',
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: '#e2e8f0',
+  zIndex: 999,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.12,
+  shadowRadius: 12,
+  elevation: 8,
+  overflow: 'hidden',
+},
+  dropdownTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#94a3b8',
+    letterSpacing: 0.8,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderColor: '#f8fafc',
+  },
+  dropdownItemActive: {
+    backgroundColor: '#f8fafc',
+  },
+  dropdownDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  dropdownItemText: {
+    fontSize: 13,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  dropdownItemTextActive: {
+    color: '#0f172a',
+    fontWeight: '700',
+  },
 
   // ── Expanded content ──
   expandedContent: {
