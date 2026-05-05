@@ -10,7 +10,7 @@ import { db } from '../firebaseConfig';
 // ─────────────────────────────────────────────────────────────────────────────
 // Status options for the dropdown
 // ─────────────────────────────────────────────────────────────────────────────
-const STATUS_OPTIONS = ['Active', 'Confirmed', 'Cancelled', 'Undelivered', 'Pending'];
+const STATUS_OPTIONS = ['Active', 'Confirmed', 'Cancelled'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Expandable Row — mirrors DashboardScreen's ExpandableOrderRow exactly
@@ -134,10 +134,8 @@ const ExpandableOrderRow = ({ item, onUpdateStatus }) => {
               >
                 <View style={[styles.dropdownDot, {
                   backgroundColor:
-                    status === 'Active'      ? '#f59e0b' :
-                    status === 'Confirmed'   ? '#3b82f6' :
-                    status === 'Cancelled'   ? '#dc2626' :
-                    status === 'Undelivered' ? '#f97316' : '#8b5cf6',
+                    status === 'Active'    ? '#f59e0b' :
+                    status === 'Confirmed' ? '#3b82f6' : '#dc2626',
                 }]} />
                 <Text style={[styles.dropdownItemText, item.status === status && styles.dropdownItemTextActive]}>
                   {status}
