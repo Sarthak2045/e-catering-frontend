@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Platform, Dimensions, ActivityIndicator, TextInput,
@@ -17,7 +17,7 @@ const PIE_COLORS = [
   '#ec4899', '#14b8a6', '#eab308', '#a855f7',
 ];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (n) =>
   `₹ ${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -25,6 +25,21 @@ const fmt = (n) =>
 const clearTime = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
 const fmtDate = (d) => d.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+// Formats a raw deliveryDate string to DD/MM/YYYY for CSV export
+const fmtDateStr = (str) => {
+  if (!str) return '';
+  const d = parseDate(str);
+  if (isNaN(d.getTime())) return str;
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+};
+
+// Compact date for filenames: DD-MM-YYYY
+const fmtDateFile = (d) => {
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
+};
 
 const COD_TYPES = ['COD', 'CASH', 'CASH_ON_DELIVERY'];
 const normPayment = (p) =>
@@ -40,7 +55,273 @@ const parseDate = (str) => {
   return new Date(str);
 };
 
-// ─── Smart Pie Chart ─────────────────────────────────────────────────────────
+const toISOLocal = (d) => {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+// ─── Expandable Order Row (Dashboard-style) ───────────────────────────────────
+
+const ExpandableOrderRow = ({ item }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const isCancelled = item.status === 'Cancelled';
+  const isCompleted = item.status === 'Completed' || item.status === 'Delivered';
+  const badgeBg     = isCancelled ? '#fef2f2' : (isCompleted ? '#f0fdf4' : '#fffbeb');
+  const badgeTxt    = isCancelled ? '#dc2626' : (isCompleted ? '#16a34a' : '#b45309');
+  const badgeBorder = isCancelled ? '#fecaca' : (isCompleted ? '#bbf7d0' : '#fde68a');
+
+  const isCOD          = normPayment(item.paymentType) === 'COD';
+  const paymentColor   = isCOD ? '#b45309' : '#0f766e';
+  const paymentLabel   = isCOD ? 'COD' : 'ONLINE';
+  const amountToCollect = isCOD ? (item.totalAmount || 0) : 0;
+
+  return (
+    <View style={dStyles.cardContainer}>
+      <TouchableOpacity
+        style={[dStyles.tableRow, expanded && dStyles.tableRowExpanded]}
+        onPress={() => setExpanded(!expanded)}
+        activeOpacity={0.85}
+      >
+        <View style={{ width: 34, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" />
+        </View>
+
+        <View style={{ flex: 0.8 }}>
+          <View style={[dStyles.badge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
+            <Text style={{ fontSize: 9, fontWeight: '700', color: badgeTxt, letterSpacing: 0.5 }}>
+              {item.status || 'ACTIVE'}
+            </Text>
+          </View>
+        </View>
+
+        <Text style={[dStyles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>
+          {item.orderNo}
+        </Text>
+
+        <Text style={[dStyles.cell, { flex: 1.0, fontSize: 12 }]}>
+          {item.deliveryDate ? new Date(item.deliveryDate).toLocaleDateString('en-GB') : '—'}
+        </Text>
+
+        <Text style={[dStyles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>
+          {item.deliveryTime || '—'}
+        </Text>
+
+        <Text style={[dStyles.cell, { flex: 1.4 }]} numberOfLines={2}>
+          {item.trainInfo || 'N/A'}{' '}
+          <Text style={{ color: '#dc2626', fontWeight: '700' }}>
+            ({item.coach || 'No Coach'}{item.seat ? ` / ${item.seat}` : ''})
+          </Text>
+        </Text>
+
+        <Text style={[dStyles.cell, { flex: 1.0, fontSize: 12 }]} numberOfLines={1}>
+          {item.contactNo || '—'}
+        </Text>
+
+        <View style={{ flex: 0.8 }}>
+          <Text style={[dStyles.paymentTag, { color: paymentColor, borderColor: paymentColor }]}>
+            {paymentLabel}
+          </Text>
+        </View>
+
+        <Text style={[dStyles.cell, { flex: 0.9, fontWeight: '700', color: '#0f172a' }]}>
+          ₹ {item.totalAmount || 0}
+        </Text>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View style={dStyles.expandedContent}>
+          <View style={dStyles.expandedLayout}>
+
+            <View style={dStyles.expandSectionLeft}>
+              <View style={dStyles.miniTableHeader}>
+                <Text style={[dStyles.miniHeadText, { flex: 1 }]}>ITEM NAME</Text>
+                <Text style={[dStyles.miniHeadText, { width: 56, textAlign: 'center' }]}>QTY</Text>
+              </View>
+              {item.items && item.items.map((prod, idx) => (
+                <View key={idx} style={dStyles.miniTableRow}>
+                  <Text style={[dStyles.miniCellText, { flex: 1 }]}>{prod.name}</Text>
+                  <Text style={[dStyles.miniCellText, { width: 56, textAlign: 'center', fontWeight: '700', color: '#0f172a' }]}>
+                    {prod.quantity}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={dStyles.expandSectionMid}>
+              <Text style={dStyles.sectionLabel}>CUSTOMER DETAILS</Text>
+              <Text style={dStyles.remarkText}>{item.customerName}</Text>
+              <Text style={[dStyles.remarkText, { color: '#475569', fontWeight: '700' }]}>Mo: {item.contactNo}</Text>
+
+              {item.remark && item.remark.trim() !== '' && (
+                <View style={dStyles.remarkBox}>
+                  <Text style={dStyles.remarkAlertText}>⚠ SPECIAL INSTRUCTIONS</Text>
+                  <Text style={dStyles.remarkContentText}>{item.remark}</Text>
+                </View>
+              )}
+
+              {item.assignedExecutiveName && (
+                <View style={dStyles.assignedBadgeBox}>
+                  <Text style={dStyles.assignedBadgeLabel}>ASSIGNED TO:</Text>
+                  <Text style={dStyles.assignedBadgeName}>{item.assignedExecutiveName}</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={dStyles.expandSectionRight}>
+              <Text style={dStyles.sectionLabel}>BILLING SUMMARY</Text>
+              <View style={dStyles.financeRow}><Text style={dStyles.financeLabel}>Sub Total</Text><Text style={dStyles.financeValue}>₹ {item.subTotal || 0}</Text></View>
+              <View style={dStyles.financeRow}><Text style={dStyles.financeLabel}>Tax / GST</Text><Text style={dStyles.financeValue}>₹ {item.tax || 0}</Text></View>
+              <View style={dStyles.financeRow}><Text style={dStyles.financeLabel}>Delivery</Text><Text style={dStyles.financeValue}>₹ {item.deliveryCharge || 0}</Text></View>
+              <View style={dStyles.financeDivider} />
+              <View style={dStyles.financeRow}>
+                <Text style={[dStyles.financeLabel, { fontWeight: '700', color: '#0f172a' }]}>TOTAL BILL</Text>
+                <Text style={[dStyles.financeValue, { fontSize: 15, fontWeight: '800', color: '#0f172a' }]}>₹ {item.totalAmount || 0}</Text>
+              </View>
+              {isCOD && (
+                <View style={dStyles.amountToCollectBar}>
+                  <Text style={dStyles.atcLabel}>COLLECT CASH</Text>
+                  <Text style={dStyles.atcValue}>₹ {amountToCollect}</Text>
+                </View>
+              )}
+            </View>
+
+          </View>
+        </View>
+      )}
+    </View>
+  );
+};
+
+// ─── Vendor Detail View ───────────────────────────────────────────────────────
+
+const VendorDetailView = ({ vendor, orders, onBack, onExport, statusFilter }) => {
+  const [search, setSearch]               = useState('');
+  const [paymentFilter, setPaymentFilter] = useState('All');
+
+  const PAYMENT_FILTERS = [
+    { label: 'All',    value: 'All',    activeColor: '#0f172a' },
+    { label: 'COD',    value: 'COD',    activeColor: '#b45309' },
+    { label: 'Online', value: 'ONLINE', activeColor: '#0f766e' },
+  ];
+
+  const allCompleted  = orders.filter(o => o.status === 'Completed' || o.status === 'Delivered');
+  const totalRevenue  = allCompleted.reduce((s, o) => s + (o.totalAmount || 0), 0);
+  const codRevenue    = allCompleted.filter(o => normPayment(o.paymentType) === 'COD').reduce((s, o) => s + (o.totalAmount || 0), 0);
+  const onlineRevenue = allCompleted.filter(o => normPayment(o.paymentType) === 'ONLINE').reduce((s, o) => s + (o.totalAmount || 0), 0);
+  const codCount      = allCompleted.filter(o => normPayment(o.paymentType) === 'COD').length;
+  const onlineCount   = allCompleted.filter(o => normPayment(o.paymentType) === 'ONLINE').length;
+
+  const displayOrders = orders.filter(o => {
+    const q = search.toLowerCase();
+    const matchPayment = paymentFilter === 'All' || normPayment(o.paymentType) === paymentFilter;
+    let matchStatus = false;
+    if (statusFilter === 'All')       matchStatus = true;
+    if (statusFilter === 'Completed') matchStatus = o.status === 'Completed';
+    if (statusFilter === 'Cancelled') matchStatus = o.status === 'Cancelled';
+    if (statusFilter === 'Delivered') matchStatus = o.status === 'Delivered' || o.status === 'Completed';
+    const matchSearch = !q ||
+      (o.orderNo      || '').toLowerCase().includes(q) ||
+      (o.customerName || '').toLowerCase().includes(q) ||
+      (o.trainInfo    || '').toLowerCase().includes(q);
+    return matchPayment && matchStatus && matchSearch;
+  });
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={vStyles.headerBar}>
+        <TouchableOpacity style={vStyles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <Ionicons name="arrow-back" size={18} color="#0f172a" />
+          <Text style={vStyles.backTxt}>Back</Text>
+        </TouchableOpacity>
+
+        <Text style={vStyles.vendorTitle}>Vendor: {vendor}</Text>
+
+        <View style={vStyles.pillRow}>
+          {PAYMENT_FILTERS.map(({ label, value, activeColor }) => {
+            const isActive = paymentFilter === value;
+            return (
+              <TouchableOpacity
+                key={value}
+                style={[vStyles.pill, isActive && { backgroundColor: activeColor, borderColor: activeColor }]}
+                onPress={() => setPaymentFilter(value)}
+                activeOpacity={0.8}
+              >
+                <Text style={[vStyles.pillTxt, isActive && { color: 'white' }]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={vStyles.searchBox}>
+          <Ionicons name="search-outline" size={15} color="#94a3b8" />
+          <TextInput
+            style={vStyles.searchInput}
+            placeholder="Search order / customer…"
+            placeholderTextColor="#94a3b8"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={15} color="#94a3b8" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <TouchableOpacity style={vStyles.exportBtn} onPress={onExport} activeOpacity={0.85}>
+          <Ionicons name="download-outline" size={15} color="white" />
+          <Text style={vStyles.exportTxt}>EXPORT</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={vStyles.summaryRow}>
+        <View style={[vStyles.summaryCard, { backgroundColor: '#16a34a' }]}>
+          <Text style={vStyles.summaryTitle}>Total : {fmt(totalRevenue)}</Text>
+          <Text style={vStyles.summarySubtitle}>Orders : {allCompleted.length}</Text>
+        </View>
+        <View style={[vStyles.summaryCard, { backgroundColor: '#0891b2' }]}>
+          <Text style={vStyles.summaryTitle}>COD : {fmt(codRevenue)}</Text>
+          <Text style={vStyles.summarySubtitle}>Orders : {codCount}</Text>
+        </View>
+        <View style={[vStyles.summaryCard, { backgroundColor: '#7c3aed' }]}>
+          <Text style={vStyles.summaryTitle}>Online : {fmt(onlineRevenue)}</Text>
+          <Text style={vStyles.summarySubtitle}>Orders : {onlineCount}</Text>
+        </View>
+      </View>
+
+      <View style={vStyles.tableContainer}>
+        <View style={vStyles.tableHeader}>
+          <View style={{ width: 38 }} />
+          <Text style={[vStyles.col, { flex: 0.9 }]}>STATUS</Text>
+          <Text style={[vStyles.col, { flex: 1.1 }]}>ORDER NO.</Text>
+          <Text style={[vStyles.col, { flex: 1.0 }]}>DEL. DATE</Text>
+          <Text style={[vStyles.col, { flex: 0.8 }]}>DEL. TIME</Text>
+          <Text style={[vStyles.col, { flex: 1.4 }]}>TRAIN</Text>
+          <Text style={[vStyles.col, { flex: 1.0 }]}>CONTACT</Text>
+          <Text style={[vStyles.col, { flex: 0.8 }]}>PAYMENT</Text>
+          <Text style={[vStyles.col, { flex: 0.9 }]}>AMOUNT</Text>
+        </View>
+
+        <ScrollView style={{ flex: 1 }}>
+          {displayOrders.length === 0 ? (
+            <View style={{ paddingVertical: 48, alignItems: 'center', gap: 10 }}>
+              <Ionicons name="receipt-outline" size={36} color="#cbd5e1" />
+              <Text style={{ fontSize: 14, color: '#94a3b8' }}>No orders found</Text>
+            </View>
+          ) : (
+            displayOrders.map(item => (
+              <ExpandableOrderRow key={item.id} item={item} />
+            ))
+          )}
+        </ScrollView>
+      </View>
+    </View>
+  );
+};
+
+// ─── Smart Pie Chart ──────────────────────────────────────────────────────────
+
 function CustomPieChart({ data, size, title }) {
   if (!data || data.length === 0) return null;
 
@@ -62,7 +343,7 @@ function CustomPieChart({ data, size, title }) {
           <Line x1={cx} y1={cy + r} x2={cx} y2={cy + r + 25} stroke={data[0].color} strokeWidth="1.5" />
           <Circle cx={cx} cy={cy + r} r="2.5" fill={data[0].color} />
           <SvgText x={cx} y={cy + r + 40} fontSize="14" fontWeight="700" fill="#1e293b" textAnchor="middle">
-             {data[0].name} ({data[0].population})
+            {data[0].name} ({data[0].population})
           </SvgText>
         </Svg>
       </View>
@@ -140,7 +421,8 @@ function CustomPieChart({ data, size, title }) {
   );
 }
 
-// ─── Summary Card ────────────────────────────────────────────────────────────
+// ─── Summary Card ─────────────────────────────────────────────────────────────
+
 const SummaryCard = ({ title, subtitle, color = '#16a34a' }) => (
   <View style={[styles.summaryCard, { backgroundColor: color, shadowColor: color }]}>
     <Text style={styles.summaryTitle}>{title}</Text>
@@ -148,12 +430,15 @@ const SummaryCard = ({ title, subtitle, color = '#16a34a' }) => (
   </View>
 );
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
 export default function ReportsScreen() {
   const [orders, setOrders]           = useState([]);
   const [filteredOrders, setFiltered] = useState([]);
   const [filterType, setFilterType]   = useState('Today');
   const [loading, setLoading]         = useState(true);
+
+  const [selectedVendor, setSelectedVendor] = useState(null);
 
   const [startDate, setStartDate] = useState(new Date());
   const [endDate, setEndDate]     = useState(new Date());
@@ -181,6 +466,12 @@ export default function ReportsScreen() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    if (filterType === 'Custom' && orders.length > 0) {
+      applyFilter(orders, 'Custom', startDate, endDate);
+    }
+  }, [startDate, endDate]);
+
   const applyFilter = (data, type, sd, ed) => {
     const today = clearTime(new Date());
     let result  = [];
@@ -204,6 +495,7 @@ export default function ReportsScreen() {
     }
     setFiltered(result);
     setFilterType(type);
+    setSelectedVendor(null);
   };
 
   const handlePeriodSelect = (type) => {
@@ -215,16 +507,13 @@ export default function ReportsScreen() {
   const displayOrders = filteredOrders.filter(o => {
     const q = search.toLowerCase();
     const matchMode = paymentMode === 'All' || normPayment(o.paymentType) === paymentMode;
-
     let matchStatus = false;
     if (statusFilter === 'All')       matchStatus = o.status === 'Completed' || o.status === 'Cancelled';
     if (statusFilter === 'Completed') matchStatus = o.status === 'Completed';
     if (statusFilter === 'Cancelled') matchStatus = o.status === 'Cancelled';
-
     const matchSearch = !q ||
       (o.vendorName || '').toLowerCase().includes(q) ||
       (o.orderNo    || '').toLowerCase().includes(q);
-
     return matchMode && matchStatus && matchSearch;
   });
 
@@ -238,9 +527,7 @@ export default function ReportsScreen() {
         total: 0, cod: 0, codCount: 0,
         online: 0, onlineCount: 0, totalCount: 0,
       };
-
       if (o.status === 'Cancelled') { map[v].cancelled++; return; }
-
       map[v].delivered++;
       const pm  = normPayment(o.paymentType);
       const amt = o.totalAmount || 0;
@@ -253,7 +540,6 @@ export default function ReportsScreen() {
   })();
 
   const completedOrders = displayOrders.filter(o => o.status === 'Completed');
-
   const totalRevenue  = completedOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
   const codRevenue    = completedOrders.filter(o => normPayment(o.paymentType) === 'COD').reduce((s, o) => s + (o.totalAmount || 0), 0);
   const onlineRevenue = completedOrders.filter(o => normPayment(o.paymentType) === 'ONLINE').reduce((s, o) => s + (o.totalAmount || 0), 0);
@@ -280,22 +566,65 @@ export default function ReportsScreen() {
       .sort((a, b) => b.population - a.population);
   })();
 
+  // ─── exportCSV — now includes formatted date & date range in filename ───────
   const exportCSV = async (vendorFilter = null) => {
     const rows = vendorFilter
       ? displayOrders.filter(o => o.vendorName === vendorFilter)
       : displayOrders;
-    let csv = 'Order No,Date,Time,Vendor,Subtotal,Tax,Total,Payment Type,Status\n';
+
+    // Build CSV with a clearly formatted Delivery Date column (DD/MM/YYYY)
+    let csv = 'Order No,Delivery Date,Delivery Time,Vendor,Customer,Contact,Train,Coach,Seat,Subtotal,Tax,Delivery Charge,Total Amount,Payment Type,Status\n';
     rows.forEach(o => {
-      csv += `${o.orderNo},${o.deliveryDate},${o.orderTime},"${o.vendorName}",${o.subTotal},${o.tax},${o.totalAmount},${normPayment(o.paymentType)},${o.status}\n`;
+      const deliveryDate = fmtDateStr(o.deliveryDate);  // DD/MM/YYYY
+      const deliveryTime = o.deliveryTime || '';
+      csv += [
+        o.orderNo          || '',
+        deliveryDate,
+        deliveryTime,
+        `"${(o.vendorName    || '').replace(/"/g, '""')}"`,
+        `"${(o.customerName  || '').replace(/"/g, '""')}"`,
+        o.contactNo        || '',
+        `"${(o.trainInfo     || '').replace(/"/g, '""')}"`,
+        o.coach            || '',
+        o.seat             || '',
+        o.subTotal         || 0,
+        o.tax              || 0,
+        o.deliveryCharge   || 0,
+        o.totalAmount      || 0,
+        normPayment(o.paymentType),
+        o.status           || '',
+      ].join(',') + '\n';
     });
-    const filename = vendorFilter
-      ? `Report_${vendorFilter.replace(/\s+/g, '_')}_${filterType}.csv`
-      : `Reports_${filterType}.csv`;
+
+    // Build a descriptive filename with the active date range
+    const today = new Date();
+    let dateRangePart = '';
+    if (filterType === 'Today') {
+      dateRangePart = fmtDateFile(today);
+    } else if (filterType === 'Week') {
+      const from = new Date(today); from.setDate(today.getDate() - 7);
+      dateRangePart = `${fmtDateFile(from)}_to_${fmtDateFile(today)}`;
+    } else if (filterType === 'Month') {
+      const from = new Date(today); from.setDate(today.getDate() - 30);
+      dateRangePart = `${fmtDateFile(from)}_to_${fmtDateFile(today)}`;
+    } else if (filterType === 'Custom') {
+      dateRangePart = `${fmtDateFile(startDate)}_to_${fmtDateFile(endDate)}`;
+    } else {
+      dateRangePart = fmtDateFile(today);
+    }
+
+    const vendorPart = vendorFilter
+      ? `_${vendorFilter.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '')}_`
+      : '_';
+
+    const filename = `Report${vendorPart}${dateRangePart}.csv`;
+
     if (Platform.OS === 'web') {
       const blob = new Blob([csv], { type: 'text/csv' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
     } else {
       const uri = FileSystem.documentDirectory + filename;
       await FileSystem.writeAsStringAsync(uri, csv);
@@ -306,25 +635,35 @@ export default function ReportsScreen() {
   const sw     = Dimensions.get('window').width;
   const PIE_SZ = Math.min(Math.floor((sw - 100) / 3.5), 240);
 
-  const toISOLocal = (d) => {
-    const pad = n => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  };
-
   if (loading) return (
     <View style={styles.loadingScreen}>
       <ActivityIndicator size="large" color="#2563eb" />
     </View>
   );
 
+  // ── Vendor drill-down view ──
+  if (selectedVendor) {
+    const vendorOrders = filteredOrders.filter(o => o.vendorName === selectedVendor);
+    return (
+      <View style={{ flex: 1, backgroundColor: '#eef2f7', padding: 14 }}>
+        <VendorDetailView
+          vendor={selectedVendor}
+          orders={vendorOrders}
+          onBack={() => setSelectedVendor(null)}
+          onExport={() => exportCSV(selectedVendor)}
+          statusFilter={statusFilter}
+        />
+      </View>
+    );
+  }
+
+  // ── Main report view ──
   return (
     <View style={{ flex: 1, backgroundColor: '#eef2f7' }}>
 
-      {/* ── TOP CONTROLS ── */}
       <View style={styles.controlsBar}>
         <View style={styles.topRow}>
 
-          {/* Search */}
           <View style={styles.searchBox}>
             <Ionicons name="search-outline" size={14} color="#94a3b8" />
             <TextInput
@@ -342,7 +681,6 @@ export default function ReportsScreen() {
             )}
           </View>
 
-          {/* Period dropdown */}
           <View style={styles.dropWrap}>
             <TouchableOpacity
               style={styles.dropBtn}
@@ -367,7 +705,6 @@ export default function ReportsScreen() {
             )}
           </View>
 
-          {/* Status dropdown */}
           <View style={styles.dropWrap}>
             <TouchableOpacity
               style={styles.dropBtn}
@@ -392,10 +729,8 @@ export default function ReportsScreen() {
             )}
           </View>
 
-          {/* Spacer */}
           <View style={{ flex: 1 }} />
 
-          {/* ── Custom date pickers — always visible, right before Export ── */}
           <View style={styles.dateBtn}>
             <Ionicons name="calendar-outline" size={13} color="#2563eb" />
             <Text style={styles.dateBtnText}>From: </Text>
@@ -406,7 +741,10 @@ export default function ReportsScreen() {
                 onChange={e => {
                   if (e.target.value) {
                     const [y, m, d] = e.target.value.split('-').map(Number);
-                    setStartDate(new Date(y, m - 1, d));
+                    const nd = new Date(y, m - 1, d);
+                    setStartDate(nd);
+                    setFilterType('Custom');
+                    applyFilter(orders, 'Custom', nd, endDate);
                   }
                 }}
                 style={{ border: 'none', outline: 'none', fontSize: 12, color: '#1d4ed8', fontWeight: '600', backgroundColor: 'transparent', cursor: 'pointer' }}
@@ -417,8 +755,14 @@ export default function ReportsScreen() {
                   <Text style={styles.dateBtnText}>{fmtDate(startDate)}</Text>
                 </TouchableOpacity>
                 {showStart && (
-                  <DateTimePicker value={startDate} mode="date"
-                    onChange={(_, d) => { if (d) setStartDate(d); setShowStart(false); }} />
+                  <DateTimePicker
+                    value={startDate}
+                    mode="date"
+                    onChange={(_, d) => {
+                      if (d) { setStartDate(d); setFilterType('Custom'); applyFilter(orders, 'Custom', d, endDate); }
+                      setShowStart(false);
+                    }}
+                  />
                 )}
               </>
             )}
@@ -436,7 +780,10 @@ export default function ReportsScreen() {
                 onChange={e => {
                   if (e.target.value) {
                     const [y, m, d] = e.target.value.split('-').map(Number);
-                    setEndDate(new Date(y, m - 1, d));
+                    const nd = new Date(y, m - 1, d);
+                    setEndDate(nd);
+                    setFilterType('Custom');
+                    applyFilter(orders, 'Custom', startDate, nd);
                   }
                 }}
                 style={{ border: 'none', outline: 'none', fontSize: 12, color: '#1d4ed8', fontWeight: '600', backgroundColor: 'transparent', cursor: 'pointer' }}
@@ -447,21 +794,19 @@ export default function ReportsScreen() {
                   <Text style={styles.dateBtnText}>{fmtDate(endDate)}</Text>
                 </TouchableOpacity>
                 {showEnd && (
-                  <DateTimePicker value={endDate} mode="date"
-                    onChange={(_, d) => { if (d) setEndDate(d); setShowEnd(false); }} />
+                  <DateTimePicker
+                    value={endDate}
+                    mode="date"
+                    onChange={(_, d) => {
+                      if (d) { setEndDate(d); setFilterType('Custom'); applyFilter(orders, 'Custom', startDate, d); }
+                      setShowEnd(false);
+                    }}
+                  />
                 )}
               </>
             )}
           </View>
 
-          <TouchableOpacity
-            style={styles.applyBtn}
-            onPress={() => applyFilter(orders, 'Custom', startDate, endDate)}
-          >
-            <Text style={styles.applyBtnText}>Apply</Text>
-          </TouchableOpacity>
-
-          {/* Export */}
           <TouchableOpacity style={styles.exportBtn} onPress={() => exportCSV()} activeOpacity={0.85}>
             <Text style={styles.exportBtnText}>EXPORT</Text>
           </TouchableOpacity>
@@ -475,7 +820,6 @@ export default function ReportsScreen() {
         keyboardShouldPersistTaps="handled"
       >
 
-        {/* ── CHART CARD ── */}
         <View style={styles.chartCard}>
           <View style={styles.chartRow}>
             <View style={styles.piesSection}>
@@ -502,26 +846,13 @@ export default function ReportsScreen() {
             </View>
 
             <View style={styles.summaryColumn}>
-              <SummaryCard
-                title={`Total : ${fmt(totalRevenue)}`}
-                subtitle={`Orders : ${completedOrders.length}`}
-                color="#16a34a"
-              />
-              <SummaryCard
-                title={`COD : ${fmt(codRevenue)}`}
-                subtitle={`Orders : ${codCount}`}
-                color="#0891b2"
-              />
-              <SummaryCard
-                title={`Online : ${fmt(onlineRevenue)}`}
-                subtitle={`Orders : ${onlineCount}`}
-                color="#7c3aed"
-              />
+              <SummaryCard title={`Total : ${fmt(totalRevenue)}`}  subtitle={`Orders : ${completedOrders.length}`} color="#16a34a" />
+              <SummaryCard title={`COD : ${fmt(codRevenue)}`}      subtitle={`Orders : ${codCount}`}               color="#0891b2" />
+              <SummaryCard title={`Online : ${fmt(onlineRevenue)}`} subtitle={`Orders : ${onlineCount}`}           color="#7c3aed" />
             </View>
           </View>
         </View>
 
-        {/* ── VENDOR TABLE ── */}
         <View style={styles.tableCard}>
           <View style={styles.tableHead}>
             {[
@@ -532,7 +863,7 @@ export default function ReportsScreen() {
               { label: 'Total',     f: 1.4 },
               { label: 'COD',       f: 1.4 },
               { label: 'Online',    f: 1.4 },
-              { label: 'Actions',   f: 0.6 },
+              { label: 'Actions',   f: 0.9 },
             ].map(({ label, f }) => (
               <Text key={label} style={[styles.th, { flex: f }]}>{label}</Text>
             ))}
@@ -555,20 +886,22 @@ export default function ReportsScreen() {
                   <Text style={styles.tdAmt}>{fmt(v.total)}</Text>
                   <Text style={styles.tdCnt}>({v.totalCount} orders)</Text>
                 </View>
-
                 <View style={{ flex: 1.4 }}>
                   <Text style={[styles.tdAmt, { color: '#0891b2' }]}>{fmt(v.cod)}</Text>
                   <Text style={styles.tdCnt}>({v.codCount} orders)</Text>
                 </View>
-
                 <View style={{ flex: 1.4 }}>
                   <Text style={[styles.tdAmt, { color: '#7c3aed' }]}>{fmt(v.online)}</Text>
                   <Text style={styles.tdCnt}>({v.onlineCount} orders)</Text>
                 </View>
 
-                <View style={{ flex: 0.6, alignItems: 'center' }}>
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => exportCSV(v.vendorName)} activeOpacity={0.8}>
-                    <Ionicons name="arrow-redo" size={13} color="white" />
+                <View style={{ flex: 0.9, flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={() => setSelectedVendor(v.vendorName)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="chevron-forward" size={14} color="white" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -589,7 +922,8 @@ export default function ReportsScreen() {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#eef2f7' },
 
@@ -635,8 +969,6 @@ const styles = StyleSheet.create({
   },
   dateBtnText:  { fontSize: 12, color: '#1d4ed8', fontWeight: '600' },
   dateArrow:    { color: '#94a3b8', fontWeight: '700', fontSize: 16 },
-  applyBtn:     { backgroundColor: '#2563eb', paddingVertical: 7, paddingHorizontal: 16, borderRadius: 6 },
-  applyBtnText: { color: 'white', fontWeight: '700', fontSize: 13 },
 
   scroll: { flex: 1 },
 
@@ -685,4 +1017,98 @@ const styles = StyleSheet.create({
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: '#2563eb', alignItems: 'center', justifyContent: 'center',
   },
+});
+
+// ─── Vendor Detail Styles ─────────────────────────────────────────────────────
+
+const vStyles = StyleSheet.create({
+  headerBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    marginBottom: 16, flexWrap: 'wrap',
+  },
+  backBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: 'white', borderRadius: 9,
+    borderWidth: 1, borderColor: '#e2e8f0',
+    paddingVertical: 10, paddingHorizontal: 16,
+  },
+  backTxt: { fontSize: 15, fontWeight: '700', color: '#0f172a' },
+  vendorTitle: { fontSize: 19, fontWeight: '800', color: '#0f172a', flex: 1 },
+
+  pillRow: { flexDirection: 'row', gap: 6 },
+  pill: {
+    paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20,
+    borderWidth: 1.5, borderColor: '#cbd5e1', backgroundColor: 'white',
+  },
+  pillTxt: { fontSize: 13, fontWeight: '700', color: '#475569' },
+
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'white', borderRadius: 9,
+    borderWidth: 1, borderColor: '#e2e8f0',
+    paddingVertical: 10, paddingHorizontal: 13,
+    minWidth: 200, maxWidth: 280,
+  },
+  searchInput: { flex: 1, fontSize: 14, color: '#1e293b', padding: 0, margin: 0, outlineStyle: 'none' },
+
+  exportBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: '#0f172a', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 9,
+  },
+  exportTxt: { color: 'white', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
+
+  summaryRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  summaryCard: { flex: 1, borderRadius: 10, paddingVertical: 16, paddingHorizontal: 18 },
+  summaryTitle: { fontSize: 15, fontWeight: '800', color: 'white', marginBottom: 4 },
+  summarySubtitle: { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
+
+  tableContainer: {
+    flex: 1, backgroundColor: 'white', borderRadius: 10,
+    borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden',
+  },
+  tableHeader: {
+    flexDirection: 'row', backgroundColor: '#0f172a',
+    paddingVertical: 14, paddingHorizontal: 14,
+    borderBottomWidth: 1, borderColor: '#e2e8f0', alignItems: 'center',
+  },
+  col: { fontSize: 11, fontWeight: '700', color: '#ffffff', letterSpacing: 0.8 },
+});
+
+// ─── Expandable Row Styles ────────────────────────────────────────────────────
+
+const dStyles = StyleSheet.create({
+  cardContainer: { borderBottomWidth: 1, borderColor: '#f1f5f9' },
+  tableRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center', backgroundColor: 'white' },
+  tableRowExpanded: { backgroundColor: '#f8fafc' },
+  cell: { fontSize: 13, color: '#334155', fontWeight: '700' },
+  badge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, borderWidth: 1, alignSelf: 'flex-start' },
+  paymentTag: { fontSize: 10, fontWeight: '700', borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', letterSpacing: 0.5 },
+
+  expandedContent: { backgroundColor: '#f8fafc', padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0' },
+  expandedLayout: { flexDirection: 'row', gap: 16 },
+
+  expandSectionLeft: { flex: 1.5, backgroundColor: 'white', borderRadius: 6, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0' },
+  miniTableHeader: { flexDirection: 'row', backgroundColor: '#f8fafc', padding: 8, borderBottomWidth: 1, borderColor: '#e2e8f0' },
+  miniHeadText: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.6 },
+  miniTableRow: { flexDirection: 'row', padding: 9, borderBottomWidth: 1, borderColor: '#f1f5f9' },
+  miniCellText: { fontSize: 13, color: '#0f172a', fontWeight: '700' },
+
+  expandSectionMid: { flex: 1, padding: 12, backgroundColor: 'white', borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0' },
+  sectionLabel: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8, marginBottom: 8 },
+  remarkText: { fontSize: 13, color: '#0f172a', fontWeight: '700', marginBottom: 3 },
+  remarkBox: { marginTop: 10, padding: 10, backgroundColor: '#fffbeb', borderRadius: 6, borderWidth: 1, borderColor: '#fde68a' },
+  remarkAlertText: { fontSize: 10, fontWeight: '700', color: '#b45309', marginBottom: 3, letterSpacing: 0.5 },
+  remarkContentText: { fontSize: 12, color: '#92400e', fontWeight: '600', lineHeight: 16 },
+  assignedBadgeBox: { marginTop: 12, padding: 10, backgroundColor: '#f0fdf4', borderRadius: 6, borderWidth: 1, borderColor: '#bbf7d0' },
+  assignedBadgeLabel: { fontSize: 10, fontWeight: '700', color: '#16a34a', marginBottom: 2, letterSpacing: 0.5 },
+  assignedBadgeName: { fontSize: 13, fontWeight: '700', color: '#14532d' },
+
+  expandSectionRight: { flex: 1, backgroundColor: 'white', borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0', padding: 12 },
+  financeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  financeLabel: { fontSize: 12, color: '#334155', fontWeight: '600' },
+  financeValue: { fontSize: 13, fontWeight: '800', color: '#0f172a' },
+  financeDivider: { height: 1, backgroundColor: '#e2e8f0', marginVertical: 8 },
+  amountToCollectBar: { backgroundColor: '#0f172a', padding: 10, borderRadius: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  atcLabel: { color: '#94a3b8', fontWeight: '700', fontSize: 10, letterSpacing: 0.8 },
+  atcValue: { color: 'white', fontWeight: '800', fontSize: 15 },
 });
