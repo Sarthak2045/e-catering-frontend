@@ -51,10 +51,8 @@ const ExpandableOrderRow = ({ item, onPrint, onAssign, isPrinted }) => {
         </View>
 
         <Text style={[styles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>{item.orderNo}</Text>
-        
-         <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.deliveryDate ? new Date(item.deliveryDate).toLocaleDateString('en-GB') : '—'} </Text>
+        <Text style={[styles.cell, { flex: 1.0, fontSize: 12 }]}>{item.deliveryDate ? new Date(item.deliveryDate).toLocaleDateString('en-GB') : '—'}</Text>
         <Text style={[styles.cell, { flex: 0.8, fontSize: 12, fontWeight: '500' }]}>{item.deliveryTime || '—'}</Text>
-        
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={1}>{item.vendorName}</Text>
 
         <Text style={[styles.cell, { flex: 1.2 }]} numberOfLines={2}>
@@ -66,14 +64,17 @@ const ExpandableOrderRow = ({ item, onPrint, onAssign, isPrinted }) => {
           <Text style={[styles.paymentTag, { color: paymentColor, borderColor: paymentColor }]}>{paymentLabel}</Text>
         </View>
 
+        {/* ── ACTIONS: green assign btn + blue print btn ── */}
         <View style={{ flex: 1.2, flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+
+          {/* Green assign / bicycle button */}
           <View style={{ position: 'relative' }}>
             <TouchableOpacity
               ref={assignBtnRef}
-              style={styles.iconBtn}
+              style={styles.assignBtn}
               onPress={handleAssignPress}
             >
-              <Ionicons name="bicycle-outline" size={16} color="#475569" />
+              <Ionicons name="bicycle-outline" size={16} color="#ffffff" />
             </TouchableOpacity>
             {isAssigned && (
               <View style={styles.tickBadge}>
@@ -82,12 +83,13 @@ const ExpandableOrderRow = ({ item, onPrint, onAssign, isPrinted }) => {
             )}
           </View>
 
+          {/* Blue print button */}
           <View style={{ position: 'relative' }}>
             <TouchableOpacity
-              style={styles.iconBtn}
+              style={styles.printBtn}
               onPress={() => onPrint(item)}
             >
-              <Ionicons name="print-outline" size={16} color="#475569" />
+              <Ionicons name="print-outline" size={16} color="#ffffff" />
             </TouchableOpacity>
             {isPrinted && (
               <View style={styles.tickBadge}>
@@ -118,7 +120,7 @@ const ExpandableOrderRow = ({ item, onPrint, onAssign, isPrinted }) => {
             <View style={styles.expandSectionMid}>
               <Text style={styles.sectionLabel}>CUSTOMER DETAILS</Text>
               <Text style={styles.remarkText}>{item.customerName}</Text>
-              <Text style={[styles.remarkText, { color: '#475569', fontWeight: '700'  }]}>Mo: {item.contactNo}</Text>
+              <Text style={[styles.remarkText, { color: '#475569', fontWeight: '700' }]}>Mo: {item.contactNo}</Text>
 
               {item.remark && item.remark.trim() !== '' && (
                 <View style={styles.remarkBox}>
@@ -254,10 +256,6 @@ export default function DashboardScreen() {
       const paymentType = isCOD ? 'COD' : 'ONLINE';
       const amountToCollect = isCOD ? (order.totalAmount || 0) : 0;
 
-      const remarksHtml = order.remark && order.remark.trim() !== ''
-        ? `<tr><td style="padding: 3px 0;">Remarks</td><td style="text-align:right; padding: 3px 0;">${order.remark}</td></tr>`
-        : '';
-
       const trainNo = (order.trainInfo || 'N/A');
       const coachSeat = `${order.coach || '-'}/${order.seat || '-'}`;
 
@@ -268,26 +266,20 @@ export default function DashboardScreen() {
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
       <style>
         @page { margin: 0; size: 80mm auto; }
-        * {
-             box-sizing: border-box;
-             font-weight: inherit;
-          }
-        /* 🟢 FIX: Added strict background-color: #ffffff to both html and body */
-        html {
-            background-color: #ffffff;
-        }
+        * { box-sizing: border-box; font-weight: inherit; }
+        html { background-color: #ffffff; }
         body {
-             background-color: #ffffff;
-             font-family: 'Courier New', Courier, monospace;
-             width: 72mm; 
-             margin: 0 auto;
-             padding: 10px 16px 16px 10px; 
-             font-size: 12px;
-             color: #000;
-             font-weight: 900;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
+          background-color: #ffffff;
+          font-family: 'Courier New', Courier, monospace;
+          width: 72mm;
+          margin: 0 auto;
+          padding: 10px 16px 16px 10px;
+          font-size: 12px;
+          color: #000;
+          font-weight: 900;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
         .center { text-align: center; }
         .bold { font-weight: bold; }
         .divider { border: none; border-top: 1px #000; margin: 7px 0; }
@@ -296,91 +288,40 @@ export default function DashboardScreen() {
         .detail-table tr td:first-child { white-space: nowrap; padding-right: 8px; }
         .detail-table tr td:last-child { text-align: right; word-break: break-word; }
         .items-table { width: 100%; border-collapse: collapse; margin-top: 2px; }
-        .items-head th {
-          font-weight: bold;
-          padding: 4px 2px;
-          border-top: 1px dashed #000;
-          border-bottom: 1px dashed #000;
-          font-size: 14px;
-        }
+        .items-head th { font-weight: bold; padding: 4px 2px; border-top: 1px dashed #000; border-bottom: 1px dashed #000; font-size: 14px; }
         .items-head th:first-child { text-align: left; }
         .items-head th:last-child { text-align: right; width: 40px; }
         .items-table tbody tr td { padding: 3px 2px; vertical-align: top; font-size: 15px; }
         .items-table tbody tr td:last-child { text-align: right; width: 40px; }
         .totals-table { width: 100%; border-collapse: collapse; }
         .totals-table td { padding: 2px 0; font-size: 14px; }
-        .totals-table td:last-child { text-align: right; padding-right: 6px; } 
-        .totals-table tr.total-row td {
-          font-weight: bold;
-          font-size: 14px;
-          padding-top: 3px;
-        }
-        .totals-table tr.collect-row td {
-          font-weight: bold;
-          font-size: 14px;
-        }
-        .payment-box {
-          border: 2.5px solid #000;
-          text-align: center;
-          padding: 8px 4px;
-          margin: 10px 0 0 0;
-          font-size: 30px;
-          font-weight: 900;
-          letter-spacing: 4px;
-        }
-        .train-box {
-          border: 2.5px solid #000;
-          border-top: none;
-          display: flex;
-          margin: 0 0 10px 0;
-        }
-        .train-cell {
-          flex: 1;
-          text-align: center;
-          padding: 8px 4px;
-          font-size: 16px; 
-          font-weight: 900;
-        }
-        .train-cell.divider-right {
-          border-right: 2.5px solid #000;
-        }
+        .totals-table td:last-child { text-align: right; padding-right: 6px; }
+        .totals-table tr.total-row td { font-weight: bold; font-size: 14px; padding-top: 3px; }
+        .totals-table tr.collect-row td { font-weight: bold; font-size: 14px; }
+        .payment-box { border: 2.5px solid #000; text-align: center; padding: 8px 4px; margin: 10px 0 0 0; font-size: 30px; font-weight: 900; letter-spacing: 4px; }
+        .train-box { border: 2.5px solid #000; border-top: none; display: flex; margin: 0 0 10px 0; }
+        .train-cell { flex: 1; text-align: center; padding: 8px 4px; font-size: 16px; font-weight: 900; }
+        .train-cell.divider-right { border-right: 2.5px solid #000; }
       </style>
     </head>
     <body>
-
-      <!-- Header -->
       <div class="center bold" style="font-size:16px; margin-bottom:2px;">E-Catering Orders</div>
-      <div class="center" style="font-size:11px;">
-        26 - Shree Siddhivinayak Complex,<br/>Railway Station Vadodara
-      </div>
-
+      <div class="center" style="font-size:11px;">26 - Shree Siddhivinayak Complex,<br/>Railway Station Vadodara</div>
       <hr class="divider"/>
-
-      <!-- Order Details -->
       <table class="detail-table">
         <tr><td>Order No.</td><td>${order.orderNo || order.pnr || 'N/A'}</td></tr>
         <tr><td>Vendor</td><td>${order.vendorName || 'N/A'}</td></tr>
-        <tr><td>Date</td><td>${order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('en-GB'): new Date().toLocaleDateString('en-GB')} </td></tr>
-        <tr><td>Time</td><td>${order.deliveryTime || new Date().toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' })}</td></tr>
+        <tr><td>Date</td><td>${order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')}</td></tr>
+        <tr><td>Time</td><td>${order.deliveryTime || new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })}</td></tr>
         <tr><td>Customer</td><td>${order.customerName || 'Customer'}</td></tr>
         <tr><td>Mobile</td><td>${order.contactNo || 'N/A'}</td></tr>
       </table>
-
       <hr class="divider"/>
-
-      <!-- Items -->
       <table class="items-table">
-        <thead class="items-head">
-          <tr><th>Item</th><th>Qty</th></tr>
-        </thead>
-        <tbody>
-          ${itemsHtml}
-        </tbody>
+        <thead class="items-head"><tr><th>Item</th><th>Qty</th></tr></thead>
+        <tbody>${itemsHtml}</tbody>
       </table>
-
       <hr class="divider"/>
-
-      <!-- Totals -->
       <table class="totals-table">
         <tr><td>Remarks:</td><td>${order.remark && order.remark.trim() !== '' ? order.remark : ''}</td></tr>
         <tr><td>Advance:</td><td>₹ 0</td></tr>
@@ -390,22 +331,14 @@ export default function DashboardScreen() {
         <tr class="total-row"><td>Total:</td><td>₹ ${order.totalAmount || 0}</td></tr>
         <tr class="collect-row"><td>Amount to collect:</td><td>₹ ${amountToCollect}</td></tr>
       </table>
-
-      <!-- Payment Mode Box -->
       <div class="payment-box">${paymentType}</div>
-
-      <!-- Train + Coach/Seat Box -->
       <div class="train-box">
         <div class="train-cell divider-right">${trainNo}</div>
         <div class="train-cell">${coachSeat}</div>
       </div>
-
-      <!-- Footer -->
       <div class="center" style="font-size:14px;">www.imperiial.tech</div>
-
     </body>
-  </html>
-`;
+  </html>`;
 
       if (Platform.OS === 'web') {
         const iframe = document.createElement('iframe');
@@ -417,9 +350,8 @@ export default function DashboardScreen() {
           iframe.contentWindow.focus();
           iframe.contentWindow.print();
           setPrintedOrders(prev => new Set([...prev, order.id]));
-          // ✅ Auto-complete order after printing
           updateDoc(doc(db, 'orders', order.id), { status: 'Completed' })
-          .catch(err => console.error('Status update failed:', err));   
+            .catch(err => console.error('Status update failed:', err));
           setTimeout(() => { document.body.removeChild(iframe); }, 1000);
         }, 200);
       } else {
@@ -604,8 +536,22 @@ const styles = StyleSheet.create({
   cell: { fontSize: 13, color: '#334155', fontWeight: '700' },
   badge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, borderWidth: 1, alignSelf: 'flex-start' },
   paymentTag: { fontSize: 10, fontWeight: '700', borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', letterSpacing: 0.5 },
-  iconBtn: { width: 32, height: 32, borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#f8fafc', justifyContent: 'center', alignItems: 'center' },
-  tickBadge: { position: 'absolute', top: -5, right: -5, width: 14, height: 14, borderRadius: 7, backgroundColor: '#16a34a', justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: '#fff' },
+
+  // ── Green assign (bicycle) button ──
+  assignBtn: {
+    width: 32, height: 32, borderRadius: 6,
+    backgroundColor: '#16a34a',
+    justifyContent: 'center', alignItems: 'center',
+  },
+
+  // ── Blue print button ──
+  printBtn: {
+    width: 32, height: 32, borderRadius: 6,
+    backgroundColor: '#3b82f6',
+    justifyContent: 'center', alignItems: 'center',
+  },
+
+  tickBadge: { position: 'absolute', top: -5, right: -5, width: 14, height: 14, borderRadius: 7, backgroundColor: '#0f172a', justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: '#fff' },
   emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
   emptyStateText: { fontSize: 14, color: '#94a3b8' },
   expandedContent: { backgroundColor: '#f8fafc', padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0' },
@@ -614,7 +560,7 @@ const styles = StyleSheet.create({
   miniTableHeader: { flexDirection: 'row', backgroundColor: '#f8fafc', padding: 8, borderBottomWidth: 1, borderColor: '#e2e8f0' },
   miniHeadText: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.6 },
   miniTableRow: { flexDirection: 'row', padding: 9, borderBottomWidth: 1, borderColor: '#f1f5f9' },
-  miniCellText: { fontSize: 13,  color: '#0f172a', fontWeight: '700'  },
+  miniCellText: { fontSize: 13, color: '#0f172a', fontWeight: '700' },
   expandSectionMid: { flex: 1, padding: 12, backgroundColor: 'white', borderRadius: 6, borderWidth: 1, borderColor: '#e2e8f0' },
   sectionLabel: { fontSize: 10, fontWeight: '700', color: '#94a3b8', letterSpacing: 0.8, marginBottom: 8 },
   remarkText: { fontSize: 13, color: '#0f172a', fontWeight: '700', marginBottom: 3 },
