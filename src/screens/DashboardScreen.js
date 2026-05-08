@@ -215,7 +215,11 @@ export default function DashboardScreen() {
     const q = query(collection(db, 'orders'));
     const unsubscribeOrders = onSnapshot(q, (snapshot) => {
       const ordersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      ordersList.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+      ordersList.sort((a, b) => {
+         const timeA = a.deliveryTime || '23:59';
+         const timeB = b.deliveryTime || '23:59';
+         return timeA.localeCompare(timeB); // ascending: earliest time first
+      });
       setOrders(ordersList);
 
       let active = 0; ordersList.forEach(o => { if (o.status === 'Active') active++; });
