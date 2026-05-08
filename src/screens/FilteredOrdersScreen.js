@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, ActivityIndicator,
-  Platform, TouchableOpacity, TextInput, ScrollView, Modal
+  View, Text, StyleSheet, FlatList, Animated,
+  Platform, TouchableOpacity, TextInput, ScrollView, Modal, Dimensions
 } from 'react-native';
 import { collection, onSnapshot, query, where, updateDoc, doc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,10 +14,95 @@ const STATUS_OPTIONS = ['Active', 'Confirmed', 'Cancelled'];
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Skeleton shimmer hook
+// ─────────────────────────────────────────────────────────────────────────────
+const useShimmer = () => {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  const opacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.75] });
+  return opacity;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skeleton Row — mimics the shape of a real order row
+// ─────────────────────────────────────────────────────────────────────────────
+const SkeletonRow = ({ opacity }) => (
+  <View style={skeletonStyles.row}>
+    {/* chevron circle */}
+    <Animated.View style={[skeletonStyles.circle, { opacity }]} />
+    {/* status badge */}
+    <Animated.View style={[skeletonStyles.badge, { opacity }]} />
+    {/* order no */}
+    <Animated.View style={[skeletonStyles.block, { flex: 1.1, width: undefined }, { opacity }]} />
+    {/* date */}
+    <Animated.View style={[skeletonStyles.block, { flex: 1.0, width: undefined }, { opacity }]} />
+    {/* time */}
+    <Animated.View style={[skeletonStyles.block, { flex: 0.8, width: undefined }, { opacity }]} />
+    {/* vendor */}
+    <Animated.View style={[skeletonStyles.block, { flex: 1.2, width: undefined }, { opacity }]} />
+    {/* train */}
+    <Animated.View style={[skeletonStyles.block, { flex: 1.2, width: undefined }, { opacity }]} />
+    {/* payment */}
+    <Animated.View style={[skeletonStyles.badge, { flex: 0.9, width: undefined }, { opacity }]} />
+    {/* exec + btns */}
+    <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+      <Animated.View style={[skeletonStyles.block, { flex: 1, width: undefined }, { opacity }]} />
+      <Animated.View style={[skeletonStyles.btn, { opacity }]} />
+      <Animated.View style={[skeletonStyles.btn, { opacity }]} />
+    </View>
+  </View>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Full skeleton table (header + N rows)
+// ─────────────────────────────────────────────────────────────────────────────
+const SkeletonTable = () => {
+  const opacity = useShimmer();
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Fake header */}
+      <View style={styles.tableHeader}>
+        <View style={{ width: 36 }} />
+        {['STATUS', 'ORDER NO.', 'DATE', 'TIME', 'VENDOR', 'TRAIN', 'PAYMENT', 'DELIVERY EXEC'].map((label, i) => (
+          <Text
+            key={i}
+            style={[
+              styles.col,
+              {
+                flex: [0.8, 1.1, 1.0, 0.8, 1.2, 1.2, 0.9, 1.2][i],
+              },
+            ]}
+          >
+            {label}
+          </Text>
+        ))}
+      </View>
+      {/* 8 skeleton rows */}
+      {Array.from({ length: 8 }).map((_, i) => (
+        <SkeletonRow key={i} opacity={opacity} />
+      ))}
+    </View>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Expandable Row
 // ─────────────────────────────────────────────────────────────────────────────
 const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
   const [expanded, setExpanded] = useState(false);
+  const STORAGE_KEY = 'viewedOrders';
+  const getViewedSet = () => {
+    try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')); }
+    catch { return new Set(); }
+  };
+  const [viewed, setViewed] = useState(() => getViewedSet().has(item.id));
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [dropdownPos, setDropdownPos] = useState({ x: 0, y: 0 });
   const editBtnRef = React.useRef(null);
@@ -26,9 +111,9 @@ const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
   const isCancelled = item.status === 'Cancelled';
   const isCompleted = item.status === 'Completed';
 
-  const badgeBg     = isCancelled ? '#fef2f2'  : isCompleted ? '#f0fdf4'  : '#fffbeb';
-  const badgeTxt    = isCancelled ? '#dc2626'  : isCompleted ? '#16a34a'  : '#b45309';
-  const badgeBorder = isCancelled ? '#fecaca'  : isCompleted ? '#bbf7d0'  : '#fde68a';
+  const badgeBg     = isCancelled ? '#fef2f2' : isCompleted ? '#f0fdf4' : '#fffbeb';
+  const badgeTxt    = isCancelled ? '#dc2626' : isCompleted ? '#16a34a' : '#b45309';
+  const badgeBorder = isCancelled ? '#fecaca' : isCompleted ? '#bbf7d0' : '#fde68a';
 
   const codTypes        = ['COD', 'CASH', 'CASH_ON_DELIVERY'];
   const isCOD           = codTypes.includes((item.paymentType || '').toUpperCase().replace(/\s+/g, '_'));
@@ -46,7 +131,14 @@ const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
   const openDropdown = (e) => {
     e.stopPropagation();
     editBtnRef.current?.measure((fx, fy, width, height, px, py) => {
-      setDropdownPos({ x: px - 148 + width, y: py + height + 4 });
+      const DROPDOWN_HEIGHT = 160;
+      const screenHeight = Dimensions.get('window').height;
+      const spaceBelow = screenHeight - (py + height);
+      const fitsBelow = spaceBelow >= DROPDOWN_HEIGHT;
+      setDropdownPos({
+        x: px - 148 + width,
+        y: fitsBelow ? py + height + 4 : py - DROPDOWN_HEIGHT - 4,
+      });
       setDropdownVisible(true);
     });
   };
@@ -58,16 +150,32 @@ const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
     });
   };
 
+  // ── Bill-print indicator badge ──
+  const hasBillPrinted = !!item.billPrintedAt;
+
   return (
     <View style={styles.cardContainer}>
       {/* ── Collapsed / summary row ── */}
       <TouchableOpacity
         style={[styles.tableRow, expanded && styles.tableRowExpanded]}
-        onPress={() => setExpanded(!expanded)}
+        onPress={() => {
+          if (!expanded && !viewed) {
+            const set = getViewedSet();
+            set.add(item.id);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+            setViewed(true);
+          }
+          setExpanded(!expanded);
+        }}
         activeOpacity={0.85}
       >
-        <View style={{ width: 36, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" />
+        <View style={{
+          width: 28, height: 28, borderRadius: 14,
+          backgroundColor: viewed ? '#94a3b8' : '#f59e0b',
+          alignItems: 'center', justifyContent: 'center',
+          marginRight: 8,
+        }}>
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#ffffff" />
         </View>
 
         <View style={{ flex: 0.8 }}>
@@ -76,6 +184,13 @@ const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
               {item.status || 'ACTIVE'}
             </Text>
           </View>
+          {/* Bill printed indicator */}
+          {hasBillPrinted && (
+            <View style={styles.billPrintedBadge}>
+              <Ionicons name="print-outline" size={8} color="#ffffff" />
+              <Text style={styles.billPrintedText}>PRINTED</Text>
+            </View>
+          )}
         </View>
 
         <Text style={[styles.cell, { flex: 1.1, fontWeight: '700', color: '#0f172a' }]}>{item.orderNo}</Text>
@@ -97,10 +212,8 @@ const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
           </Text>
         </View>
 
-        {/* ── DELIVERY EXEC column — name > bicycle btn > edit btn ── */}
+        {/* ── DELIVERY EXEC column ── */}
         <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-
-          {/* Executive name */}
           <Text
             style={[styles.cell, {
               fontSize: 11,
@@ -113,7 +226,6 @@ const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
             {item.assignedExecutiveName || 'Not Assigned'}
           </Text>
 
-          {/* Assign / Reassign bicycle button */}
           <View style={{ position: 'relative' }}>
             <TouchableOpacity
               ref={assignBtnRef}
@@ -129,7 +241,6 @@ const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
             )}
           </View>
 
-          {/* Edit status button — BLUE background */}
           <TouchableOpacity
             ref={editBtnRef}
             style={styles.editBtn}
@@ -140,7 +251,7 @@ const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
         </View>
       </TouchableOpacity>
 
-      {/* ── Modal Dropdown for status change — renders above ALL layers ── */}
+      {/* ── Modal Dropdown for status change ── */}
       <Modal
         visible={dropdownVisible}
         transparent
@@ -206,6 +317,23 @@ const ExpandableOrderRow = ({ item, onUpdateStatus, onAssign }) => {
               <Text style={styles.sectionLabel}>CUSTOMER DETAILS</Text>
               <Text style={styles.remarkText}>{item.customerName}</Text>
               <Text style={[styles.remarkText, { color: '#64748b' }]}>Mo: {item.contactNo}</Text>
+
+              {/* Bill print timestamp */}
+              {hasBillPrinted && (
+                <View style={styles.billPrintInfoBox}>
+                  <Ionicons name="print-outline" size={13} color="#3b82f6" />
+                  <View>
+                    <Text style={styles.billPrintInfoLabel}>BILL PRINTED</Text>
+                    <Text style={styles.billPrintInfoTime}>
+                      {new Date(
+                        item.billPrintedAt?.toDate
+                          ? item.billPrintedAt.toDate()
+                          : item.billPrintedAt
+                      ).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               {item.remark && item.remark.trim() !== '' && (
                 <View style={styles.remarkBox}>
@@ -280,8 +408,6 @@ const PaginationBar = ({ currentPage, totalItems, itemsPerPage, onPageChange, on
 
   return (
     <View style={styles.paginationBar}>
-
-      {/* ── Items-per-page selector ── */}
       <View style={styles.pageSizeWrapper}>
         <Text style={styles.pageSizeLabel}>Items per page:</Text>
         <TouchableOpacity
@@ -315,14 +441,12 @@ const PaginationBar = ({ currentPage, totalItems, itemsPerPage, onPageChange, on
         )}
       </View>
 
-      {/* ── Range label ── */}
       <Text style={styles.pageRangeText}>
         {startItem}–{endItem} of {totalItems}
       </Text>
 
-      {/* ── Navigation buttons ── */}
       <View style={styles.pageNavRow}>
-        <NavBtn iconName="play-skip-back"    onPress={() => onPageChange(1)}              disabled={currentPage === 1} />
+        <NavBtn iconName="play-skip-back"    onPress={() => onPageChange(1)}               disabled={currentPage === 1} />
         <NavBtn iconName="chevron-back"      onPress={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} />
         <NavBtn iconName="chevron-forward"   onPress={() => onPageChange(currentPage + 1)} disabled={currentPage === totalPages} />
         <NavBtn iconName="play-skip-forward" onPress={() => onPageChange(totalPages)}      disabled={currentPage === totalPages} />
@@ -341,22 +465,18 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
   const [loading, setLoading]               = useState(true);
   const [searchQuery, setSearchQuery]       = useState('');
 
-  // ── Pagination state ──
-  const [currentPage, setCurrentPage]       = useState(1);
-  const [itemsPerPage, setItemsPerPage]     = useState(50);
+  const [currentPage, setCurrentPage]   = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
-  // ── Assign executive modal state ──
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [selectedOrder, setSelectedOrder]           = useState(null);
   const [assignDropdownPos, setAssignDropdownPos]   = useState({ x: 0, y: 0, width: 0, height: 0 });
 
-  // Derived — slice for current page
-  const totalItems   = filteredOrders.length;
-  const totalPages   = Math.max(1, Math.ceil(totalItems / itemsPerPage));
-  const startIdx     = (currentPage - 1) * itemsPerPage;
-  const pagedOrders  = filteredOrders.slice(startIdx, startIdx + itemsPerPage);
+  const totalItems  = filteredOrders.length;
+  const totalPages  = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const startIdx    = (currentPage - 1) * itemsPerPage;
+  const pagedOrders = filteredOrders.slice(startIdx, startIdx + itemsPerPage);
 
-  // ── Fetch executives ──
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'executives'), (snapshot) => {
       setExecutives(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -404,22 +524,47 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
     setAssignModalVisible(false);
   };
 
-  // Reset to page 1 whenever page size changes
   const handleItemsPerPageChange = (size) => {
     setItemsPerPage(size);
     setCurrentPage(1);
   };
 
-  // Clamp page when total changes
   const handlePageChange = (page) => {
     setCurrentPage(Math.min(Math.max(1, page), totalPages));
   };
 
+  // ── Fetch orders — sort by billPrintedAt desc (most recently printed first),
+  //    fallback to createdAt for orders without a print timestamp ──
   useEffect(() => {
     const q = query(collection(db, 'orders'), where('status', '==', statusFilter));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      list.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+     list.sort((a, b) => {
+      const toMs = (val) => {
+    if (!val) return 0;
+
+    if (val?.toDate) {
+      return val.toDate().getTime();
+    }
+
+    const d = new Date(val).getTime();
+    return isNaN(d) ? 0 : d;
+  };
+
+  const aPrinted = !!a.billPrintedAt;
+  const bPrinted = !!b.billPrintedAt;
+
+  if (aPrinted && !bPrinted) return -1;
+  if (!aPrinted && bPrinted) return 1;
+
+  if (aPrinted && bPrinted) {
+    return toMs(b.billPrintedAt) - toMs(a.billPrintedAt);
+  }
+
+  return toMs(b.createdAt) - toMs(a.createdAt);
+});
+
       setOrders(list);
       setFilteredOrders(list);
       setLoading(false);
@@ -428,8 +573,9 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
   }, [statusFilter]);
 
   useEffect(() => {
-    if (!searchQuery.trim()) { setFilteredOrders(orders); }
-    else {
+    if (!searchQuery.trim()) {
+      setFilteredOrders(orders);
+    } else {
       const q = searchQuery.toLowerCase();
       setFilteredOrders(orders.filter(o =>
         (o.orderNo || '').toString().toLowerCase().includes(q) ||
@@ -441,13 +587,6 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
     }
     setCurrentPage(1);
   }, [searchQuery, orders]);
-
-  if (loading) return (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#0f172a" />
-      <Text style={styles.loadingText}>Loading orders…</Text>
-    </View>
-  );
 
   return (
     <View style={styles.container}>
@@ -462,83 +601,92 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
               {
                 backgroundColor:
                   statusFilter === 'Completed' ? '#16a34a' :
-                  statusFilter === 'Cancelled' ? '#dc2626' : '#f59e0b'
+                  statusFilter === 'Cancelled' ? '#dc2626' : '#f59e0b',
               }
             ]} />
             <Text style={styles.subHeading}>
-              {filteredOrders.length} {filteredOrders.length === 1 ? 'order' : 'orders'} found
+              {loading ? '…' : `${filteredOrders.length} ${filteredOrders.length === 1 ? 'order' : 'orders'} found`}
             </Text>
           </View>
         </View>
 
-        {/* Search */}
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={16} color="#94a3b8" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by order, vendor, train…"
-            placeholderTextColor="#94a3b8"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={16} color="#94a3b8" />
-            </TouchableOpacity>
-          ) : null}
-        </View>
+        {/* Search — hidden while loading */}
+        {!loading && (
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={16} color="#94a3b8" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by order, vendor, train…"
+              placeholderTextColor="#94a3b8"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery ? (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={16} color="#94a3b8" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        )}
       </View>
 
       {/* ── Table container ── */}
       <View style={styles.tableContainer}>
 
-        {/* Table header */}
-        <View style={styles.tableHeader}>
-          <View style={{ width: 36 }} />
-          <Text style={[styles.col, { flex: 0.8 }]}>STATUS</Text>
-          <Text style={[styles.col, { flex: 1.1 }]}>ORDER NO.</Text>
-          <Text style={[styles.col, { flex: 1.0 }]}>DATE</Text>
-          <Text style={[styles.col, { flex: 0.8 }]}>TIME</Text>
-          <Text style={[styles.col, { flex: 1.2 }]}>VENDOR</Text>
-          <Text style={[styles.col, { flex: 1.2 }]}>TRAIN</Text>
-          <Text style={[styles.col, { flex: 0.9 }]}>PAYMENT</Text>
-          <Text style={[styles.col, { flex: 1.2 }]}>DELIVERY EXEC</Text>
-        </View>
-
-        {/* Rows */}
-        {filteredOrders.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Ionicons name="receipt-outline" size={36} color="#cbd5e1" />
-            <Text style={styles.emptyStateText}>
-              {searchQuery ? 'No orders match your search' : `No ${statusFilter.toLowerCase()} orders`}
-            </Text>
-          </View>
+        {loading ? (
+          // ── SKELETON ──
+          <SkeletonTable />
         ) : (
-          <FlatList
-            data={pagedOrders}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => (
-              <ExpandableOrderRow
-                item={item}
-                onUpdateStatus={handleUpdateStatus}
-                onAssign={openAssignModal}
+          <>
+            {/* Table header */}
+            <View style={styles.tableHeader}>
+              <View style={{ width: 36 }} />
+              <Text style={[styles.col, { flex: 0.8 }]}>STATUS</Text>
+              <Text style={[styles.col, { flex: 1.1 }]}>ORDER NO.</Text>
+              <Text style={[styles.col, { flex: 1.0 }]}>DATE</Text>
+              <Text style={[styles.col, { flex: 0.8 }]}>TIME</Text>
+              <Text style={[styles.col, { flex: 1.2 }]}>VENDOR</Text>
+              <Text style={[styles.col, { flex: 1.2 }]}>TRAIN</Text>
+              <Text style={[styles.col, { flex: 0.9 }]}>PAYMENT</Text>
+              <Text style={[styles.col, { flex: 1.2 }]}>DELIVERY EXEC</Text>
+            </View>
+
+            {/* Rows */}
+            {filteredOrders.length === 0 ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="receipt-outline" size={36} color="#cbd5e1" />
+                <Text style={styles.emptyStateText}>
+                  {searchQuery ? 'No orders match your search' : `No ${statusFilter.toLowerCase()} orders`}
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={pagedOrders}
+                keyExtractor={item => item.id}
+                renderItem={({ item }) => (
+                  <ExpandableOrderRow
+                    item={item}
+                    onUpdateStatus={handleUpdateStatus}
+                    onAssign={openAssignModal}
+                  />
+                )}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingBottom: 0, flexGrow: 1 }}
+                showsVerticalScrollIndicator={false}
               />
             )}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 0, flexGrow: 1 }}
-            showsVerticalScrollIndicator={false}
-          />
-        )}
 
-        {/* ── Pagination bar ── */}
-        {filteredOrders.length > 0 && (
-          <PaginationBar
-            currentPage={currentPage}
-            totalItems={totalItems}
-            itemsPerPage={itemsPerPage}
-            onPageChange={handlePageChange}
-            onItemsPerPageChange={handleItemsPerPageChange}
-          />
+            {/* Pagination */}
+            {filteredOrders.length > 0 && (
+              <PaginationBar
+                currentPage={currentPage}
+                totalItems={totalItems}
+                itemsPerPage={itemsPerPage}
+                onPageChange={handlePageChange}
+                onItemsPerPageChange={handleItemsPerPageChange}
+              />
+            )}
+          </>
         )}
       </View>
 
@@ -557,10 +705,18 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
           <View
             style={[
               styles.assignDropdownContainer,
-              {
-                top: assignDropdownPos.y + assignDropdownPos.height + 6,
-                left: assignDropdownPos.x - 170,
-              },
+              (() => {
+                const DROPDOWN_HEIGHT = 320;
+                const screenHeight = Dimensions.get('window').height;
+                const spaceBelow = screenHeight - (assignDropdownPos.y + assignDropdownPos.height);
+                const fitsBelow = spaceBelow >= DROPDOWN_HEIGHT;
+                return {
+                  top: fitsBelow
+                    ? assignDropdownPos.y + assignDropdownPos.height + 6
+                    : assignDropdownPos.y - DROPDOWN_HEIGHT - 6,
+                  left: assignDropdownPos.x - 170,
+                };
+              })(),
             ]}
             onStartShouldSetResponder={() => true}
           >
@@ -571,7 +727,6 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
               </Text>
             </View>
 
-            {/* Currently assigned indicator */}
             {selectedOrder?.assignedExecutiveName && (
               <View style={styles.currentlyAssignedRow}>
                 <View style={styles.currentlyAssignedDot} />
@@ -609,7 +764,6 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
               )}
             </ScrollView>
 
-            {/* Remove assignment option if already assigned */}
             {selectedOrder?.assignedExecutiveName && (
               <TouchableOpacity style={styles.removeExecRow} onPress={handleRemoveExec}>
                 <Ionicons name="close-circle-outline" size={16} color="#dc2626" />
@@ -624,6 +778,39 @@ export default function FilteredOrdersScreen({ statusFilter, title }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Skeleton styles (separate object for clarity)
+// ─────────────────────────────────────────────────────────────────────────────
+const skeletonStyles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderColor: '#f1f5f9',
+    gap: 8,
+  },
+  circle: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: '#e2e8f0',
+    marginRight: 8,
+  },
+  block: {
+    height: 12, borderRadius: 6,
+    backgroundColor: '#e2e8f0',
+    minWidth: 48,
+  },
+  badge: {
+    width: 52, height: 20, borderRadius: 4,
+    backgroundColor: '#e2e8f0',
+  },
+  btn: {
+    width: 28, height: 28, borderRadius: 6,
+    backgroundColor: '#e2e8f0',
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Styles
 // ─────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
@@ -633,16 +820,7 @@ const styles = StyleSheet.create({
     padding: 24,
     height: Platform.OS === 'web' ? '100vh' : '100%',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    gap: 12,
-  },
-  loadingText: { color: '#64748b', fontSize: 13, fontWeight: '600' },
 
-  // Top bar
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -656,7 +834,6 @@ const styles = StyleSheet.create({
   countDot: { width: 7, height: 7, borderRadius: 4 },
   subHeading: { fontSize: 13, color: '#64748b', fontWeight: '500' },
 
-  // Search bar
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -676,7 +853,6 @@ const styles = StyleSheet.create({
     outlineStyle: 'none',
   },
 
-  // Table wrapper
   tableContainer: {
     flex: 1,
     backgroundColor: 'white',
@@ -696,7 +872,6 @@ const styles = StyleSheet.create({
   },
   col: { fontSize: 10, fontWeight: '700', color: '#ffffff', letterSpacing: 0.8 },
 
-  // Card / row
   cardContainer: { borderBottomWidth: 1, borderColor: '#f1f5f9' },
   tableRow: {
     flexDirection: 'row',
@@ -708,7 +883,6 @@ const styles = StyleSheet.create({
   tableRowExpanded: { backgroundColor: '#f8fafc' },
   cell: { fontSize: 13, color: '#334155', fontWeight: '700' },
 
-  // Badges & tags
   badge: {
     paddingHorizontal: 7,
     paddingVertical: 3,
@@ -716,6 +890,51 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignSelf: 'flex-start',
   },
+
+  // ── Bill printed badge (tiny, below status badge) ──
+  billPrintedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    marginTop: 3,
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 3,
+    alignSelf: 'flex-start',
+  },
+  billPrintedText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 0.4,
+  },
+
+  // ── Bill print info box in expanded section ──
+  billPrintInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 4,
+    padding: 8,
+    backgroundColor: '#eff6ff',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  billPrintInfoLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#3b82f6',
+    letterSpacing: 0.5,
+  },
+  billPrintInfoTime: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+
   paymentTag: {
     fontSize: 10,
     fontWeight: '700',
@@ -727,7 +946,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
-  // Assign button (bicycle) — green tint
   assignBtn: {
     width: 28,
     height: 28,
@@ -736,8 +954,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  // Tick badge on top of assign btn
   tickBadge: {
     position: 'absolute',
     top: -4,
@@ -751,8 +967,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#fff',
   },
-
-  // Edit (status) button — BLUE background
   editBtn: {
     width: 28,
     height: 28,
@@ -762,7 +976,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // Empty state
   emptyState: {
     flex: 1,
     justifyContent: 'center',
@@ -771,7 +984,6 @@ const styles = StyleSheet.create({
   },
   emptyStateText: { fontSize: 14, color: '#94a3b8' },
 
-  // Status dropdown
   dropdownMenu: {
     width: 180,
     backgroundColor: 'white',
@@ -811,7 +1023,6 @@ const styles = StyleSheet.create({
   dropdownItemText: { fontSize: 13, color: '#334155', fontWeight: '500' },
   dropdownItemTextActive: { color: '#0f172a', fontWeight: '700' },
 
-  // ── Assign executive modal ──
   dropdownBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.15)' },
   assignDropdownContainer: {
     position: 'absolute',
@@ -854,16 +1065,10 @@ const styles = StyleSheet.create({
     borderColor: '#bbf7d0',
   },
   currentlyAssignedDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+    width: 7, height: 7, borderRadius: 4,
     backgroundColor: '#16a34a',
   },
-  currentlyAssignedText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#16a34a',
-  },
+  currentlyAssignedText: { fontSize: 11, fontWeight: '600', color: '#16a34a' },
   execDropdownRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -892,13 +1097,8 @@ const styles = StyleSheet.create({
     borderColor: '#fecaca',
     backgroundColor: '#fef2f2',
   },
-  removeExecText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#dc2626',
-  },
+  removeExecText: { fontSize: 12, fontWeight: '700', color: '#dc2626' },
 
-  // ── Expanded content ──
   expandedContent: {
     backgroundColor: '#f8fafc',
     padding: 16,
@@ -956,11 +1156,8 @@ const styles = StyleSheet.create({
     borderColor: '#fde68a',
   },
   remarkAlertText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#b45309',
-    marginBottom: 3,
-    letterSpacing: 0.5,
+    fontSize: 10, fontWeight: '700', color: '#b45309',
+    marginBottom: 3, letterSpacing: 0.5,
   },
   remarkContentText: { fontSize: 12, color: '#92400e', fontWeight: '600', lineHeight: 16 },
   assignedBadgeBox: {
@@ -972,11 +1169,8 @@ const styles = StyleSheet.create({
     borderColor: '#bbf7d0',
   },
   assignedBadgeLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#16a34a',
-    marginBottom: 2,
-    letterSpacing: 0.5,
+    fontSize: 10, fontWeight: '700', color: '#16a34a',
+    marginBottom: 2, letterSpacing: 0.5,
   },
   assignedBadgeName: { fontSize: 13, fontWeight: '700', color: '#14532d' },
 
@@ -1004,7 +1198,6 @@ const styles = StyleSheet.create({
   atcLabel: { color: '#94a3b8', fontWeight: '700', fontSize: 10, letterSpacing: 0.8 },
   atcValue: { color: 'white', fontWeight: '800', fontSize: 15 },
 
-  // ── Pagination bar ──
   paginationBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1016,7 +1209,6 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     backgroundColor: 'white',
   },
-
   pageSizeWrapper: { flexDirection: 'row', alignItems: 'center', gap: 8, position: 'relative' },
   pageSizeLabel: { fontSize: 12, color: '#64748b', fontWeight: '500' },
   pageSizeSelector: {
@@ -1061,9 +1253,7 @@ const styles = StyleSheet.create({
   pageSizeOptionActive: { backgroundColor: '#f8fafc' },
   pageSizeOptionText: { fontSize: 13, color: '#334155', fontWeight: '500' },
   pageSizeOptionTextActive: { color: '#0f172a', fontWeight: '700' },
-
   pageRangeText: { fontSize: 12, color: '#64748b', fontWeight: '500' },
-
   pageNavRow: { flexDirection: 'row', gap: 4 },
   pageNavBtn: {
     width: 32,
