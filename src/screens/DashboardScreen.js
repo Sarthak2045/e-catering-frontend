@@ -15,6 +15,9 @@ let isShiftStarted = true;
 
 const ExpandableOrderRow = ({ item, onPrint, onAssign, isPrinted }) => {
   const [expanded, setExpanded] = useState(false);
+  const STORAGE_KEY = 'viewedOrders';
+  const getViewedSet = () => { try {  return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')); } catch { return new Set(); } };
+  const [viewed, setViewed] = useState(() => getViewedSet().has(item.id));
   const assignBtnRef = useRef(null);
 
   const isAssigned = !!item.assignedExecutiveName;
@@ -39,9 +42,14 @@ const ExpandableOrderRow = ({ item, onPrint, onAssign, isPrinted }) => {
 
   return (
     <View style={styles.cardContainer}>
-      <TouchableOpacity style={[styles.tableRow, expanded && styles.tableRowExpanded]} onPress={() => setExpanded(!expanded)} activeOpacity={0.85}>
-        <View style={{ width: 36, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#94a3b8" />
+      <TouchableOpacity style={[styles.tableRow, expanded && styles.tableRowExpanded]} onPress={() => {  if (!expanded && !viewed) {  const set = getViewedSet(); set.add(item.id); localStorage.setItem(STORAGE_KEY, JSON.stringify([...set])); setViewed(true); } setExpanded(!expanded); }} activeOpacity={0.85}>
+        <View style={{
+              width: 28, height: 28, borderRadius: 14,
+              backgroundColor: viewed ? '#94a3b8' : '#f59e0b',
+              alignItems: 'center', justifyContent: 'center',
+              marginRight: 8,
+            }}>
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color="#ffffff" />
         </View>
 
         <View style={{ flex: 0.8 }}>
