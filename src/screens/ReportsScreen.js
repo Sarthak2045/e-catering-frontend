@@ -60,6 +60,26 @@ const toISOLocal = (d) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
+// ─── Vendor Name Normalizer ───────────────────────────────────────────────────
+const VENDOR_ALIASES = {
+  'zoop':          'ZOOP',
+  'zoop india':    'ZOOP',
+  'railyatri':     'RailYatri',
+  'rail yatri':    'RailYatri',
+  'railrecipe':    'RailRecipe',
+  'rail recipe':   'RailRecipe',
+  'rajbhog khana': 'RajBhog Khana',
+  'rajbhog':       'RajBhog Khana',
+  'rel food':      'REL FOOD',
+  'rail food':     'REL FOOD',   // ← the fix
+};
+
+const normalizeVendor = (name) => {
+  if (!name) return 'Unknown';
+  const key = name.trim().toLowerCase();
+  return VENDOR_ALIASES[key] || name.trim();
+};
+
 // ─── Expandable Order Row (Dashboard-style) ───────────────────────────────────
 
 const ExpandableOrderRow = ({ item }) => {
@@ -520,7 +540,7 @@ export default function ReportsScreen() {
   const vendorSummary = (() => {
     const map = {};
     displayOrders.forEach(o => {
-      const v = o.vendorName || 'Unknown';
+      const v = normalizeVendor(o.vendorName);
       if (!map[v]) map[v] = {
         vendorName: v,
         delivered: 0, cancelled: 0,
@@ -558,7 +578,7 @@ export default function ReportsScreen() {
   const vendorPieData = (() => {
     const counts = {};
     completedOrders.forEach(o => {
-      const v = o.vendorName || 'Unknown';
+      const v = normalizeVendor(o.vendorName);
       counts[v] = (counts[v] || 0) + 1;
     });
     return Object.keys(counts)
@@ -569,8 +589,8 @@ export default function ReportsScreen() {
   // ─── exportCSV — now includes formatted date & date range in filename ───────
   const exportCSV = async (vendorFilter = null) => {
     const rows = vendorFilter
-      ? displayOrders.filter(o => o.vendorName === vendorFilter)
-      : displayOrders;
+         ? displayOrders.filter(o => normalizeVendor(o.vendorName) === vendorFilter)
+         : displayOrders;
 
     // Build CSV with a clearly formatted Delivery Date column (DD/MM/YYYY)
     let csv = 'Order No,Delivery Date,Delivery Time,Vendor,Customer,Contact,Train,Coach,Seat,Subtotal,Tax,Delivery Charge,Total Amount,Payment Type,Status\n';
@@ -643,7 +663,7 @@ export default function ReportsScreen() {
 
   // ── Vendor drill-down view ──
   if (selectedVendor) {
-    const vendorOrders = filteredOrders.filter(o => o.vendorName === selectedVendor);
+    const vendorOrders = filteredOrders.filter(o => normalizeVendor(o.vendorName) === selectedVendor);
     return (
       <View style={{ flex: 1, backgroundColor: '#eef2f7', padding: 14 }}>
         <VendorDetailView
